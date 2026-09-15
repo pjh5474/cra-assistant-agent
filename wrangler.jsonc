@@ -8,12 +8,47 @@
 	"main": "worker/index.ts",
 	"compatibility_date": "2026-09-11",
 	"assets": {
-		"not_found_handling": "single-page-application"
+		"not_found_handling": "single-page-application",
 	},
 	"observability": {
-		"enabled": true
+		"enabled": true,
 	},
-	"upload_source_maps": true
+	"upload_source_maps": true,
+	"compatibility_flags": ["nodejs_compat"],
+	"ai": {
+		"binding": "AI",
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"class_name": "CraAssistantAgent",
+				"name": "CraAssistantAgent",
+			},
+		],
+	},
+	"migrations": [
+		{
+			"tag": "1",
+			"new_sqlite_classes": ["CraAssistantAgent"],
+		},
+	],
+	"r2_buckets": [
+		{
+			"bucket_name": "cra-assistant-skills",
+			"binding": "SKILLS",
+			"remote": true,
+		},
+		{
+			"bucket_name": "cra-assistant-bucket",
+			"binding": "FILES",
+			"remote": true,
+		},
+	],
+	"worker_loaders": [
+		{
+			"binding": "LOADER",
+		},
+	],
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
