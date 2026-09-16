@@ -8,6 +8,9 @@
 	"main": "worker/index.ts",
 	"compatibility_date": "2026-09-11",
 	"assets": {
+		// Required by Wrangler CLI. Vite (`npm run dev` / `vite build`) ignores
+		// this path and writes the real client output into dist/client.
+		"directory": "./dist/client",
 		"not_found_handling": "single-page-application",
 	},
 	"observability": {
