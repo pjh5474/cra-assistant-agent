@@ -1,34 +1,12 @@
 import { XMLParser } from "fast-xml-parser";
 
-import type { MFDSFeedType } from "../types/mfds.ts";
+import type {
+	MFDSFeed,
+	MFDSFeedType,
+	MFDSCollectionResult,
+	MFDSCollectionFailure,
+} from "../types/mfds.ts";
 import type { RegulatoryItem } from "../types/regulatory.ts";
-
-interface MFDSFeed {
-	type: MFDSFeedType;
-	title: string;
-	sourceType: RegulatoryItem["sourceType"];
-	url: string;
-}
-
-export interface CollectionFailure {
-	source: "MFDS";
-	feedType: MFDSFeedType;
-	feedTitle: string;
-	message: string;
-}
-
-export interface MFDSCollectionResult {
-	source: "MFDS";
-
-	collectedAt: string;
-
-	totalFetched: number;
-	totalReturned: number;
-
-	items: RegulatoryItem[];
-
-	failures: CollectionFailure[];
-}
 
 /**
  * MFDS에서 공식적으로 제공하는 RSS 중
@@ -178,7 +156,7 @@ export class MFDSCollector {
 		const collectedAt = new Date().toISOString();
 
 		const items: RegulatoryItem[] = [];
-		const failures: CollectionFailure[] = [];
+		const failures: MFDSCollectionFailure[] = [];
 
 		let totalFetched = 0;
 

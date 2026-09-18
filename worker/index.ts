@@ -8,13 +8,21 @@ import { agentTool } from "agents/agent-tools";
 import type { AgentToolRunInfo } from "agents/agent-tools";
 import type { ContextConfig } from "agents/context";
 import type { SkillSource } from "agents/skills";
-import type { LanguageModel, ToolSet } from "ai";
+import { tool, type LanguageModel, type ToolSet } from "ai";
 import { z } from "zod";
 import { createWorkersAI } from "workers-ai-provider";
 import { createExtensionTools } from "@cloudflare/think/tools/extensions";
 import { MFDSRegulatoryAgent } from "./agents/MFDSRegulatoryAgent.ts";
+import type {
+	MFDSWorkflowInput,
+	RegulatoryWorkflowProgress,
+	RegulatoryWorkflowState,
+	StartRegulatoryBriefingInput,
+} from "./types/workflow.ts";
+import { RegulatoryBriefingWorkflow } from "./workflows/RegulatoryBriefingWorkflow.ts";
+import { createInitialWorkflowState } from "./helpers/createInitialWorkflowState.ts";
 
-export { MFDSRegulatoryAgent };
+export { MFDSRegulatoryAgent, RegulatoryBriefingWorkflow };
 
 export type SubagentStatus = "idle" | "running" | "completed" | "error";
 
@@ -27,7 +35,7 @@ export interface SubagentActivity {
 	updatedAt: string;
 }
 
-type CraAssistantAgentState = {
+export type CraAssistantAgentState = {
 	files: {
 		path: string;
 		type: "file" | "directory";
@@ -40,32 +48,50 @@ type CraAssistantAgentState = {
 		ich?: SubagentActivity;
 		konect?: SubagentActivity;
 	};
+
+	regulatoryWorkflow: RegulatoryWorkflowState;
 };
 
 export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	extensionLoader = this.env.LOADER;
 
+	/*
+	 * State & Basic Functions Start
+	 */
+
 	initialState: CraAssistantAgentState = {
 		files: [],
-		subagents: {},
+		subagents: {
+			mfds: {
+				status: "idle",
+				phase: undefined,
+				message: undefined,
+				progress: undefined,
+				runId: undefined,
+				updatedAt: new Date().toISOString(),
+			},
+			ich: {
+				status: "idle",
+				phase: undefined,
+				message: undefined,
+				progress: undefined,
+				runId: undefined,
+				updatedAt: new Date().toISOString(),
+			},
+			konect: {
+				status: "idle",
+				phase: undefined,
+				message: undefined,
+				progress: undefined,
+				runId: undefined,
+				updatedAt: new Date().toISOString(),
+			},
+		},
+		regulatoryWorkflow: createInitialWorkflowState(),
 	};
 
-	async refreshFiles() {
-		const all = await this.workspace.glob("**/*");
-
-		this.setState({
-			...this.state,
-
-			files: all.map((file) => ({
-				path: file.path,
-
-				type: file.type === "file" ? "file" : "directory",
-
-				size: file.size,
-
-				updatedAt: file.updatedAt,
-			})),
-		});
+	getState(): CraAssistantAgentState {
+		return this.state;
 	}
 
 	async onStart() {
@@ -175,6 +201,14 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 				}),
 			}),
 
+			getTodayDate: tool({
+				description: "Get the today's date in YYYY-MM-DD format",
+				inputSchema: z.object({}),
+				execute: async () => {
+					return new Date().toISOString().split("T")[0];
+				},
+			}),
+
 			...createExtensionTools({
 				manager: this.extensionManager!,
 			}),
@@ -205,9 +239,39 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 		];
 	}
 
-	/**
+	/* State & Basic Functions End */
+
+	/*
+	 * File System Start
+	 */
+
+	async refreshFiles() {
+		const all = await this.workspace.glob("**/*");
+
+		this.setState({
+			...this.state,
+
+			files: all.map((file) => ({
+				path: file.path,
+
+				type: file.type === "file" ? "file" : "directory",
+
+				size: file.size,
+
+				updatedAt: file.updatedAt,
+			})),
+		});
+	}
+
+	@callable()
+	async readWorkspaceFile(path: string) {
+		return await this.workspace.readFile(path);
+	}
+
+	/* File System End */
+
+	/*
 	 * R2 skills catalog.
-	 * Think automatically adds the skills context block.
 	 */
 	getSkills(): SkillSource[] {
 		return [
@@ -218,10 +282,95 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 		];
 	}
 
+	/* R2 Skills Catalog End */
+
+	/*
+	 * Regulatory Briefing Workflow Start
+	 */
 	@callable()
-	async readWorkspaceFile(path: string) {
-		return await this.workspace.readFile(path);
+	async startRegulatoryBriefingWorkflow(input: StartRegulatoryBriefingInput) {
+		console.log("[CraAssistantAgent] startRegulatoryBriefingWorkflow", input);
+		const params = {
+			since: input.since,
+			until: input.until,
+			sources: input.sources ?? ["MFDS"],
+			purpose: input.purpose ?? "weekly-briefing",
+			includeRag: input.includeRag ?? false,
+			requireApproval: input.requireApproval ?? false,
+			sendEmail: input.sendEmail ?? false,
+		};
+
+		const instanceId = await this.runWorkflow(
+			"REGULATORY_BRIEFING_WORKFLOW",
+			params,
+			{
+				metadata: {
+					type: "regulatory-briefing",
+					sources: params.sources.join(","),
+					purpose: params.purpose,
+					startedAt: new Date().toISOString(),
+				},
+			},
+		);
+
+		this.setState({
+			...this.state,
+			regulatoryWorkflow: {
+				...this.state.regulatoryWorkflow,
+				workflowId: instanceId,
+				stage: "initializing",
+				progress: 0,
+				startedAt: new Date().toISOString(),
+				completedAt: undefined,
+				error: undefined,
+			},
+		});
+
+		return {
+			ok: true,
+			workflowId: instanceId,
+			params,
+		};
 	}
+
+	async collectMFDSForWorkflow(input: MFDSWorkflowInput) {
+		const mfds = await this.dynamicAgents.get(
+			MFDSRegulatoryAgent,
+			"mfds-regulatory",
+		);
+
+		return mfds.collectAndAnalyzeForWorkflow(input);
+	}
+
+	override async onWorkflowProgress(
+		workflowName: string,
+		instanceId: string,
+		progress: unknown,
+	) {
+		const p = progress as RegulatoryWorkflowProgress;
+
+		this.setState({
+			...this.state,
+			regulatoryWorkflow: {
+				...this.state.regulatoryWorkflow,
+				workflowId: instanceId,
+				stage: p.stage,
+				progress: p.percent,
+			},
+		});
+
+		console.log("[CraAssistantAgent] workflow progress", {
+			workflowName,
+			instanceId,
+			progress: p,
+		});
+	}
+
+	/* Regulatory Briefing Workflow End */
+
+	/*
+	 * Sub-Agent Start
+	 */
 
 	private resolveSubagentKey(
 		agentType: string,
@@ -272,6 +421,8 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 			},
 		});
 	}
+
+	/* Sub-Agent End */
 }
 
 export default {

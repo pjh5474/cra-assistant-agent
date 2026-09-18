@@ -25,7 +25,9 @@ export function CurrentActivityCard({ activity }: CurrentActivityCardProps) {
 							<span className="text-sm font-medium">MFDS</span>
 
 							<Badge
-								variant={activity.status === "error" ? "destructive" : "outline"}
+								variant={
+									activity.status === "error" ? "destructive" : "outline"
+								}
 							>
 								{statusLabel(activity.status)}
 							</Badge>

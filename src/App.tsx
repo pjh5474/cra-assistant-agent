@@ -8,22 +8,25 @@ import { AgentOverview } from "@/components/agents/AgentOverview";
 import { CurrentActivityCard } from "@/components/agents/CurrentActivityCard";
 import { SubagentSummary } from "@/components/agents/SubagentSummary";
 import { AppHeader } from "@/components/layout/AppHeader";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { isToolUIPart } from "ai";
+import type { AgentToolRunState } from "agents";
+import { Button } from "./components/ui/button";
 import type {
 	CraAssistantAgentState,
 	SubagentActivity,
 	SubagentStatus,
 } from "@/types/agent";
-import { isToolUIPart } from "ai";
-import type { AgentToolRunState } from "agents";
+import { RegulatoryWorkflowProgress } from "./components/workflow/RegulatoryWorkflowProgress.tsx";
+import { RegulatoryBriefingPanel } from "./components/workflow/RegulatoryBriefingPanel.tsx";
+import { ScrollArea } from "./components/ui/scroll-area.tsx";
 
 export default function App() {
-	const [input, setInput] = useState("");
-
 	const agent = useAgent<any, CraAssistantAgentState>({
 		agent: "CraAssistantAgent",
 		name: "default",
 	});
+
+	const [input, setInput] = useState("");
 
 	const {
 		messages,
@@ -39,11 +42,6 @@ export default function App() {
 	const agentTools = useAgentToolEvents({
 		agent,
 	});
-
-	const state = agent.state ?? {
-		files: [],
-		subagents: {},
-	};
 
 	const isBusy = isStreaming || isRecovering || status === "submitted";
 
@@ -110,20 +108,16 @@ export default function App() {
 
 		return {
 			status,
-
 			phase: run.progress?.phase,
-
 			message: run.progress?.message,
-
 			progress: run.status === "completed" ? 1 : run.progress?.fraction,
-
 			runId: run.runId,
-
 			updatedAt: new Date().toISOString(),
 		};
 	}
 
-	const mfdsActivity = activityFromRun(latestMFDSRun) ?? state.subagents?.mfds;
+	const mfdsActivity =
+		activityFromRun(latestMFDSRun) ?? agent.state?.subagents?.mfds;
 
 	function handleSend(text: string) {
 		sendMessage({
@@ -133,6 +127,17 @@ export default function App() {
 		setInput("");
 	}
 
+	const handleWorkflowStart = async () => {
+		await agent.stub.startRegulatoryBriefingWorkflow({
+			since: "2026-09-15T00:00:00+09:00",
+			until: "2026-09-17T00:00:00+09:00",
+			sources: ["MFDS"],
+			purpose: "weekly-briefing",
+		});
+	};
+
+	const workflow = agent.state?.regulatoryWorkflow;
+	const briefing = workflow?.briefing;
 	return (
 		<div className="min-h-screen bg-background text-foreground">
 			<AppHeader
@@ -160,16 +165,20 @@ export default function App() {
 							<SubagentSummary
 								name="ICH"
 								description="ICH guideline monitoring"
-								state={state.subagents?.ich}
+								state={agent.state?.subagents?.ich}
 							/>
 
 							<SubagentSummary
 								name="KoNECT"
 								description="Clinical trial ecosystem updates"
-								state={state.subagents?.konect}
+								state={agent.state?.subagents?.konect}
 							/>
 						</div>
 					</section>
+
+					{workflow?.stage === "completed" && briefing && (
+						<RegulatoryBriefingPanel briefing={briefing} />
+					)}
 
 					<ChatPanel
 						messages={messages}
@@ -185,13 +194,21 @@ export default function App() {
 				<aside className="space-y-4">
 					<AgentOverview />
 
-					<CurrentActivityCard activity={state.subagents?.mfds} />
+					<CurrentActivityCard activity={agent.state?.subagents?.mfds} />
 
-					{allRuns.length > 0 && (
-						<AgentRunTimeline runs={allRuns} variant="panel" />
-					)}
+					<ScrollArea className="h-screen">
+						<div className="space-y-4 p-4">
+							<Button onClick={handleWorkflowStart} className="w-full">
+								Start Workflow
+							</Button>
 
-					<Card>
+							<RegulatoryWorkflowProgress workflow={workflow} />
+
+							<AgentRunTimeline runs={allRuns} variant="panel" />
+						</div>
+					</ScrollArea>
+
+					{/* <Card>
 						<CardHeader className="pb-3">
 							<CardTitle className="text-base">Workspace</CardTitle>
 						</CardHeader>
@@ -200,10 +217,12 @@ export default function App() {
 							<div className="flex items-center justify-between text-sm">
 								<span className="text-muted-foreground">Files</span>
 
-								<span className="font-medium">{state.files?.length ?? 0}</span>
+								<span className="font-medium">
+									{agent.state?.files?.length ?? 0}
+								</span>
 							</div>
 						</CardContent>
-					</Card>
+					</Card> */}
 				</aside>
 			</main>
 		</div>

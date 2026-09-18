@@ -3,6 +3,12 @@ import type { LanguageModel, ToolSet } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { createMFDSCollectTool } from "../tools/collect/MFDSCollectTool.ts";
 import { createRegulatoryAnalyzeTool } from "../tools/analyze/RegulatoryAnalyzeTool.ts";
+import type { MFDSWorkflowInput } from "../types/workflow.ts";
+import { MFDSCollector } from "../source-collectors/MFDSCollector.ts";
+import { RegulatoryAnalyzer } from "../analyzers/RegulatoryAnalyzer.ts";
+import type { RegulatoryItem } from "../types/regulatory.ts";
+import type { MFDSWorkflowResult } from "../types/mfds.ts";
+
 export class MFDSRegulatoryAgent extends Think<Env> {
 	maxSteps = 10;
 
@@ -75,6 +81,66 @@ export class MFDSRegulatoryAgent extends Think<Env> {
 					await report(progress);
 				},
 			}),
+		};
+	}
+
+	private async collectForWorkflow(since?: Date) {
+		const collector = new MFDSCollector();
+
+		return collector.collect({
+			since,
+			maxDescriptionLength: 3000,
+		});
+	}
+
+	private async analyzeForWorkflow(
+		items: RegulatoryItem[],
+		includeIrrelevant: boolean,
+	) {
+		const analyzer = new RegulatoryAnalyzer(this.getModel());
+
+		return analyzer.analyze(items, {
+			includeIrrelevant,
+			batchSize: 5,
+		});
+	}
+
+	async collectAndAnalyzeForWorkflow(
+		input: MFDSWorkflowInput,
+	): Promise<MFDSWorkflowResult> {
+		console.log("[MFDSRegulatoryAgent] workflow RPC start", input);
+
+		const since = input.since ? new Date(input.since) : undefined;
+
+		if (since && Number.isNaN(since.getTime())) {
+			throw new Error(`Invalid since date: ${input.since}`);
+		}
+
+		const collection = await this.collectForWorkflow(since);
+
+		const analysis = await this.analyzeForWorkflow(
+			collection.items,
+			input.includeIrrelevant ?? false,
+		);
+
+		console.log("[MFDSRegulatoryAgent] workflow RPC complete", {
+			fetched: collection.totalFetched,
+			candidates: collection.totalReturned,
+			relevant: analysis.relevantCount,
+		});
+
+		return {
+			source: "MFDS",
+			collectedAt: collection.collectedAt,
+			totalFetched: collection.totalFetched,
+			candidateCount: collection.totalReturned,
+			relevantCount: analysis.relevantCount,
+			failures: collection.failures, //source-specific structured diagnostic data
+			warnings: collection.failures.map(
+				(failure) => `${failure.feedTitle}: ${failure.message}`,
+			), // 공통 Workflow/UI에서 바로 표시 가능한 문자열
+
+			items: analysis.items,
 		};
 	}
 }

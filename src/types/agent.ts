@@ -1,9 +1,6 @@
-export type SubagentStatus =
-	| "idle"
-	| "running"
-	| "completed"
-	| "interrupted"
-	| "error";
+import type { RegulatoryWorkflowState } from "../../worker/types/workflow.ts";
+
+export type SubagentStatus = "idle" | "running" | "completed" | "error";
 
 export interface SubagentActivity {
 	status: SubagentStatus;
@@ -28,4 +25,5 @@ export interface CraAssistantAgentState {
 		ich?: SubagentActivity;
 		konect?: SubagentActivity;
 	};
+	regulatoryWorkflow: RegulatoryWorkflowState;
 }
