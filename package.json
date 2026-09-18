@@ -26,6 +26,7 @@
 		"cloudflare": "^7.1.0",
 		"cn": "^0.3.0",
 		"fast-xml-parser": "^5.11.1",
+		"fflate": "^0.8.3",
 		"lucide-react": "^1.46.0",
 		"postal-mime": "^3.0.0",
 		"react": "^19.3.0",

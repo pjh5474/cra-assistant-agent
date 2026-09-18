@@ -21,6 +21,8 @@ import type {
 } from "./types/workflow.ts";
 import { RegulatoryBriefingWorkflow } from "./workflows/RegulatoryBriefingWorkflow.ts";
 import { createInitialWorkflowState } from "./helpers/createInitialWorkflowState.ts";
+import { ICHImplementationCollector } from "./source-collectors/ICHImplementationCollector.ts";
+import { ICHGuidelineCollector } from "./source-collectors/ICHGuidlineCollector.ts";
 
 export { MFDSRegulatoryAgent, RegulatoryBriefingWorkflow };
 
@@ -423,6 +425,70 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	}
 
 	/* Sub-Agent End */
+
+	/*
+	 * ICH Regulatory Agent Start
+	 */
+	@callable()
+	async testICHImplementation() {
+		const collector = new ICHImplementationCollector();
+
+		const result = await collector.collect({
+			partyId: 30,
+			// guidelineId: 72,
+		});
+
+		console.log("[ICH TEST RESULT]", JSON.stringify(result, null, 2));
+
+		return result;
+	}
+
+	@callable()
+	async testICHEfficacyPage() {
+		const response = await fetch(
+			"https://www.ich.org/page/efficacy-guidelines",
+		);
+
+		const html = await response.text();
+
+		const result = {
+			status: response.status,
+			hasE6R3: html.includes("E6(R3)"),
+			hasDocumentPdf: html.includes("document-pdf"),
+			hasConsolidatedGuideline: html.includes("Consolidated Guideline"),
+			length: html.length,
+		};
+
+		console.log("[ICH Efficacy Test]", result);
+
+		const collector = new ICHGuidelineCollector();
+
+		const efficacyResult = await collector.collect();
+
+		const e6r3 = efficacyResult.guidelines.find(
+			(item) => item.displayCode === "E6(R3)",
+		);
+
+		console.log("[ICH Efficacy Test - E6(R3)]", e6r3);
+
+		return {
+			pageTest: result,
+			collectorTest: {
+				totalFetched: efficacyResult.totalFetched,
+				totalReturned: efficacyResult.totalReturned,
+				failures: efficacyResult.failures,
+				e6r3,
+			},
+		};
+	}
+
+	/* ICH Regulatory Agent End */
+
+	/*
+	 * KoNECT Regulatory Agent Start
+	 */
+
+	/* KoNECT Regulatory Agent End */
 }
 
 export default {

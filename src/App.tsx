@@ -136,6 +136,15 @@ export default function App() {
 		});
 	};
 
+	const handleTestICHImplementation = async () => {
+		const result = await agent.stub.testICHImplementation();
+
+		console.log(result);
+		const efficacyResult = await agent.stub.testICHEfficacyPage();
+
+		console.log(efficacyResult);
+	};
+
 	const workflow = agent.state?.regulatoryWorkflow;
 	const briefing = workflow?.briefing;
 	return (
@@ -200,6 +209,10 @@ export default function App() {
 						<div className="space-y-4 p-4">
 							<Button onClick={handleWorkflowStart} className="w-full">
 								Start Workflow
+							</Button>
+
+							<Button onClick={handleTestICHImplementation} className="w-full">
+								Test ICH Implementation
 							</Button>
 
 							<RegulatoryWorkflowProgress workflow={workflow} />
