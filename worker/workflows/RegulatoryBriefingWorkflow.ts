@@ -93,23 +93,24 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 		const mfdsResult = params.sources.includes("MFDS")
 			? await step.do(
 					"process-mfds",
-
 					{
-						retries: {
-							limit: 3,
-							delay: "5 seconds",
-							backoff: "exponential",
-						},
-
 						timeout: "5 minutes",
 					},
 
 					async () => {
-						return await this.agent.collectMFDSForWorkflow({
-							since: params.since,
+						try {
+							return await this.agent.collectMFDSForWorkflow({
+								since: params.since,
+								includeIrrelevant: false,
+							});
+						} catch (error) {
+							console.error(
+								"[RegulatoryBriefingWorkflow] MFDS processing failed",
+								error,
+							);
 
-							includeIrrelevant: false,
-						});
+							throw error;
+						}
 					},
 				)
 			: undefined;
@@ -118,25 +119,17 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			await step.mergeAgentState({
 				regulatoryWorkflow: {
 					...this.agent.getState().regulatoryWorkflow,
-
 					progress: 0.35,
-
 					sources: {
 						...this.agent.getState().regulatoryWorkflow.sources,
 
 						mfds: {
 							source: "MFDS",
-
 							fetched: mfdsResult.totalFetched,
-
 							candidates: mfdsResult.candidateCount,
-
 							relevant: mfdsResult.relevantCount,
-
 							completedAt: new Date().toISOString(),
-
 							items: mfdsResult.items,
-
 							warnings: mfdsResult.failures.map(
 								(failure) => `${failure.feedTitle}: ${failure.message}`,
 							),
@@ -153,10 +146,55 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			});
 		}
 
+		// -----------------------------------------------------
+		// ICH
+		// -----------------------------------------------------
+
+		const ichResult = params.sources.includes("ICH")
+			? await step.do(
+					"process-ich",
+					{
+						timeout: "5 minutes",
+					},
+					async () => {
+						return await this.agent.collectICHForWorkflow({
+							member: "MFDS, Republic of Korea",
+							guidelinePrefixes: ["E6"],
+						});
+					},
+				)
+			: undefined;
+
+		if (ichResult) {
+			await step.mergeAgentState({
+				regulatoryWorkflow: {
+					...this.agent.getState().regulatoryWorkflow,
+					progress: 0.55,
+					sources: {
+						...this.agent.getState().regulatoryWorkflow.sources,
+						ich: {
+							source: "ICH",
+							fetched: ichResult.totalFetched,
+							candidates: ichResult.candidateCount,
+							relevant: ichResult.relevantCount,
+							completedAt: new Date().toISOString(),
+							items: ichResult.items,
+							warnings: ichResult.warnings,
+						},
+					},
+				},
+			});
+
+			await this.reportProgress({
+				stage: "sourceProcessing",
+				step: "sourceProcessing",
+				percent: 0.55,
+				message: `ICH processing completed: ${ichResult.relevantCount} CRA-relevant updates`,
+			});
+		}
+
 		/*
 		 * 향후:
-		 *
-		 * const ichResult = ...
 		 * const konectResult = ...
 		 */
 
@@ -167,19 +205,14 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 		await step.mergeAgentState({
 			regulatoryWorkflow: {
 				...this.agent.getState().regulatoryWorkflow,
-
 				progress: 0.5,
-
 				steps: {
 					...this.agent.getState().regulatoryWorkflow.steps,
 
 					sourceProcessing: {
 						status: "completed",
-
 						message: "Regulatory source processing completed",
-
 						progress: 1,
-
 						completedAt: new Date().toISOString(),
 					},
 				},
@@ -196,18 +229,15 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 
 				stage: "synthesizing",
 
-				progress: 0.55,
+				progress: 0.65,
 
 				steps: {
 					...this.agent.getState().regulatoryWorkflow.steps,
 
 					synthesis: {
 						status: "running",
-
 						message: "Synthesizing regulatory findings",
-
 						progress: 0,
-
 						startedAt: new Date().toISOString(),
 					},
 				},
@@ -230,9 +260,9 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 					sources.push(mfdsResult);
 				}
 
-				// if (ichResult) {
-				// 	sources.push(ichResult);
-				// }
+				if (ichResult) {
+					sources.push(ichResult);
+				}
 
 				// if (konectResult) {
 				// 	sources.push(konectResult);

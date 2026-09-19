@@ -24,6 +24,7 @@ import { RegulatoryBriefingWorkflow } from "./workflows/RegulatoryBriefingWorkfl
 import { createInitialWorkflowState } from "./helpers/createInitialWorkflowState.ts";
 import { ICHImplementationCollector } from "./source-collectors/ICHImplementationCollector.ts";
 import { ICHGuidelineCollector } from "./source-collectors/ICHGuidelineCollector.ts";
+import type { ICHWorkflowInput, ICHWorkflowResult } from "./types/ich.ts";
 
 export { MFDSRegulatoryAgent, RegulatoryBriefingWorkflow, ICHRegulatoryAgent };
 
@@ -168,10 +169,10 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 
 	getTools(): ToolSet {
 		return {
-		  mfdsRegulatory: agentTool(MFDSRegulatoryAgent, {
-			displayName: "MFDS Regulatory Agent",
-	  
-			description: `
+			mfdsRegulatory: agentTool(MFDSRegulatoryAgent, {
+				displayName: "MFDS Regulatory Agent",
+
+				description: `
 	  Delegate MFDS regulatory monitoring and analysis to the specialized
 	  MFDS sub-agent.
 	  
@@ -181,39 +182,33 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	  The sub-agent performs source collection and CRA relevance analysis
 	  internally, and returns a compact result instead of raw RSS content.
 			`.trim(),
-	  
-			inputSchema: z.object({
-			  since: z
-				.string()
-				.optional()
-				.describe(
-				  "Start date or ISO 8601 datetime. Examples: 2026-09-10 or 2026-09-10T00:00:00+09:00",
-				),
-	  
-			  purpose: z
-				.enum([
-				  "weekly-briefing",
-				  "regulatory-check",
-				  "cra-learning",
-				])
-				.default("regulatory-check")
-				.describe(
-				  "Why the MFDS regulatory analysis is being requested.",
-				),
-	  
-			  includeIrrelevant: z
-				.boolean()
-				.default(false)
-				.describe(
-				  "Whether CRA-irrelevant items should also be returned. Normally false.",
-				),
+
+				inputSchema: z.object({
+					since: z
+						.string()
+						.optional()
+						.describe(
+							"Start date or ISO 8601 datetime. Examples: 2026-09-10 or 2026-09-10T00:00:00+09:00",
+						),
+
+					purpose: z
+						.enum(["weekly-briefing", "regulatory-check", "cra-learning"])
+						.default("regulatory-check")
+						.describe("Why the MFDS regulatory analysis is being requested."),
+
+					includeIrrelevant: z
+						.boolean()
+						.default(false)
+						.describe(
+							"Whether CRA-irrelevant items should also be returned. Normally false.",
+						),
+				}),
 			}),
-		  }),
-	  
-		  ichRegulatory: agentTool(ICHRegulatoryAgent, {
-			displayName: "ICH Regulatory Agent",
-	  
-			description: `
+
+			ichRegulatory: agentTool(ICHRegulatoryAgent, {
+				displayName: "ICH Regulatory Agent",
+
+				description: `
 	  Delegate ICH guideline lookup and regulatory analysis to the specialized
 	  ICH sub-agent.
 	  
@@ -224,54 +219,52 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	  Typical use cases include ICH E6/GCP, MFDS implementation status,
 	  and official ICH guideline documents.
 			`.trim(),
-	  
-			inputSchema: z.object({
-			  member: z
-				.string()
-				.optional()
-				.default("MFDS, Republic of Korea")
-				.describe(
-				  "ICH member or regulatory authority to focus on.",
-				),
-	  
-			  guidelinePrefixes: z
-				.array(z.string())
-				.optional()
-				.default(["E6"])
-				.describe(
-				  "Guideline families to include, for example ['E6'] or ['E2', 'E6', 'E8'].",
-				),
-	  
-			  guidelineCodes: z
-				.array(z.string())
-				.optional()
-				.describe(
-				  "Exact guideline codes to include, for example ['E6(R3)'].",
-				),
-	  
-			  includeAllImplementations: z
-				.boolean()
-				.optional()
-				.default(false)
-				.describe(
-				  "Whether implementation information for all ICH members should be retained.",
-				),
+
+				inputSchema: z.object({
+					member: z
+						.string()
+						.optional()
+						.default("MFDS, Republic of Korea")
+						.describe("ICH member or regulatory authority to focus on."),
+
+					guidelinePrefixes: z
+						.array(z.string())
+						.optional()
+						.default(["E6"])
+						.describe(
+							"Guideline families to include, for example ['E6'] or ['E2', 'E6', 'E8'].",
+						),
+
+					guidelineCodes: z
+						.array(z.string())
+						.optional()
+						.describe(
+							"Exact guideline codes to include, for example ['E6(R3)'].",
+						),
+
+					includeAllImplementations: z
+						.boolean()
+						.optional()
+						.default(false)
+						.describe(
+							"Whether implementation information for all ICH members should be retained.",
+						),
+				}),
 			}),
-		  }),
-	  
-		  getTodayDate: tool({
-			description: "Get the today's date in YYYY-MM-DD format",
-			inputSchema: z.object({}),
-			execute: async () => {
-			  return new Date().toISOString().split("T")[0];
-			},
-		  }),
-	  
-		  ...createExtensionTools({
-			manager: this.extensionManager!,
-		  }),
+
+			getTodayDate: tool({
+				description: "Get the today's date in YYYY-MM-DD format",
+				inputSchema: z.object({}),
+				execute: async () => {
+					return new Date().toISOString().split("T")[0];
+				},
+			}),
+
+			...createExtensionTools({
+				manager: this.extensionManager!,
+			}),
 		};
-	  }
+	}
 
 	configureContext(): ContextConfig[] | Promise<ContextConfig[]> {
 		return [
@@ -305,17 +298,12 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 
 	async refreshFiles() {
 		const all = await this.workspace.glob("**/*");
-
 		this.setState({
 			...this.state,
-
 			files: all.map((file) => ({
 				path: file.path,
-
 				type: file.type === "file" ? "file" : "directory",
-
 				size: file.size,
-
 				updatedAt: file.updatedAt,
 			})),
 		});
@@ -398,6 +386,17 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 		);
 
 		return mfds.collectAndAnalyzeForWorkflow(input);
+	}
+
+	async collectICHForWorkflow(
+		input: ICHWorkflowInput,
+	): Promise<ICHWorkflowResult> {
+		const ich = await this.dynamicAgents.get(
+			ICHRegulatoryAgent,
+			"ich-regulatory",
+		);
+
+		return ich.collectAndAnalyzeForWorkflow(input);
 	}
 
 	override async onWorkflowProgress(

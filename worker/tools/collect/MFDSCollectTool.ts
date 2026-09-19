@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { MFDSCollector } from "../../source-collectors/MFDSCollector.ts";
-import { MFDS_FEEDS } from "../../source-collectors/MFDSCollector.ts";
+import { MFDS_FEEDS } from "../../constants.ts";
 
 const collector = new MFDSCollector();
 

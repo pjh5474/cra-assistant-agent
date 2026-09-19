@@ -9,18 +9,12 @@ import { CurrentActivityCard } from "@/components/agents/CurrentActivityCard";
 import { SubagentSummary } from "@/components/agents/SubagentSummary";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { isToolUIPart } from "ai";
-import type { AgentToolRunState } from "agents";
 import { Button } from "./components/ui/button";
-import type {
-	CraAssistantAgentState,
-	RegulatoryAgentSource,
-	SubagentActivity,
-	SubagentStatus,
-} from "@/types/agent";
+import type { CraAssistantAgentState } from "@/types/agent";
 import { RegulatoryWorkflowProgress } from "./components/workflow/RegulatoryWorkflowProgress.tsx";
 import { RegulatoryBriefingPanel } from "./components/workflow/RegulatoryBriefingPanel.tsx";
 import { ScrollArea } from "./components/ui/scroll-area.tsx";
-import { getSubagentInfo } from "./lib/subagent.ts";
+import { activityFromRun } from "./lib/subagent.ts";
 
 export default function App() {
 	const agent = useAgent<any, CraAssistantAgentState>({
@@ -80,50 +74,40 @@ export default function App() {
 			.find((run) => run.agentType === "MFDSRegulatoryAgent");
 	}, [allAgentRuns]);
 
-	function activityFromRun(
-		run: AgentToolRunState | undefined,
-	): SubagentActivity | undefined {
-		if (!run) {
-			return undefined;
-		}
+	const latestICHRun = useMemo(() => {
+		return [...allAgentRuns]
+			.reverse()
+			.find((run) => run.agentType === "ICHRegulatoryAgent");
+	}, [allAgentRuns]);
 
-		let status: SubagentStatus;
-
-		switch (run.status) {
-			case "running":
-				status = "running";
-				break;
-
-			case "completed":
-				status = "completed";
-				break;
-
-			case "error":
-			case "aborted":
-			case "interrupted":
-				status = "error";
-				break;
-
-			default:
-				status = "idle";
-		}
-
-		const agentInfo = getSubagentInfo(run.agentType);
-
-  return {
-    source: agentInfo.source,
-    displayName: agentInfo.displayName,
-			status,
-			phase: run.progress?.phase,
-			message: run.progress?.message,
-			progress: run.status === "completed" ? 1 : run.progress?.fraction,
-			runId: run.runId,
-			updatedAt: new Date().toISOString(),
-		};
-	}
+	const latestKONECTRun = useMemo(() => {
+		return [...allAgentRuns]
+			.reverse()
+			.find((run) => run.agentType === "KONECTRegulatoryAgent");
+	}, [allAgentRuns]);
 
 	const mfdsActivity =
 		activityFromRun(latestMFDSRun) ?? agent.state?.subagents?.mfds;
+
+	const ichActivity =
+		activityFromRun(latestICHRun) ?? agent.state?.subagents?.ich;
+
+	const konectActivity =
+		activityFromRun(latestKONECTRun) ?? agent.state?.subagents?.konect;
+
+	const latestRegulatoryRun = useMemo(() => {
+		return [...allAgentRuns]
+			.reverse()
+			.find((run) =>
+				[
+					"MFDSRegulatoryAgent",
+					"ICHRegulatoryAgent",
+					"KONECTRegulatoryAgent",
+				].includes(run.agentType),
+			);
+	}, [allAgentRuns]);
+
+	const currentActivity = activityFromRun(latestRegulatoryRun);
 
 	function handleSend(text: string) {
 		sendMessage({
@@ -135,9 +119,9 @@ export default function App() {
 
 	const handleWorkflowStart = async () => {
 		await agent.stub.startRegulatoryBriefingWorkflow({
-			since: "2026-09-15T00:00:00+09:00",
+			since: "2026-09-16T00:00:00+09:00",
 			until: "2026-09-17T00:00:00+09:00",
-			sources: ["MFDS"],
+			sources: ["MFDS", "ICH"],
 			purpose: "weekly-briefing",
 		});
 	};
@@ -180,13 +164,13 @@ export default function App() {
 							<SubagentSummary
 								name="ICH"
 								description="ICH guideline monitoring"
-								state={agent.state?.subagents?.ich}
+								state={ichActivity}
 							/>
 
 							<SubagentSummary
 								name="KoNECT"
 								description="Clinical trial ecosystem updates"
-								state={agent.state?.subagents?.konect}
+								state={konectActivity}
 							/>
 						</div>
 					</section>
@@ -209,7 +193,7 @@ export default function App() {
 				<aside className="space-y-4">
 					<AgentOverview />
 
-					<CurrentActivityCard activity={agent.state?.subagents?.mfds} />
+					<CurrentActivityCard activity={currentActivity} />
 
 					<ScrollArea className="h-screen">
 						<div className="space-y-4 p-4">

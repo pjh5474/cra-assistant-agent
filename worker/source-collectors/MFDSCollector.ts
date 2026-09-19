@@ -7,55 +7,7 @@ import type {
 	MFDSCollectionFailure,
 } from "../types/mfds.ts";
 import type { RegulatoryItem } from "../types/regulatory.ts";
-
-/**
- * MFDS에서 공식적으로 제공하는 RSS 중
- * 임상시험 / 의약품 규제 모니터링에 활용할 가치가 높은 feed.
- */
-export const MFDS_FEEDS: readonly MFDSFeed[] = [
-	{
-		type: "recent-law",
-		title: "최근 개정 법령",
-		sourceType: "law",
-		url: "https://www.mfds.go.kr/www/rss/brd.do?brdId=data0008",
-	},
-	{
-		type: "official-notice",
-		title: "고시전문",
-		sourceType: "notice",
-		url: "https://www.mfds.go.kr/www/rss/brd.do?brdId=data0005",
-	},
-	{
-		type: "law-revision",
-		title: "법률 제·개정 현황",
-		sourceType: "law",
-		url: "https://www.mfds.go.kr/www/rss/brd.do?brdId=relaw0001",
-	},
-	{
-		type: "safety-letter",
-		title: "안전성 서한",
-		sourceType: "safety",
-		url: "https://www.mfds.go.kr/www/rss/brd.do?brdId=seohan001",
-	},
-	{
-		type: "civil-guidance",
-		title: "민원인안내서",
-		sourceType: "guidance",
-		url: "https://www.mfds.go.kr/www/rss/brd.do?brdId=data0011",
-	},
-	{
-		type: "guideline",
-		title: "안내서/지침",
-		sourceType: "guideline",
-		url: "https://www.mfds.go.kr/www/rss/brd.do?brdId=data0013",
-	},
-	{
-		type: "law",
-		title: "법, 시행령, 시행규칙",
-		sourceType: "law",
-		url: "https://www.mfds.go.kr/www/rss/brd.do?brdId=data0003",
-	},
-] as const;
+import { MFDS_FEEDS } from "../constants.ts";
 
 interface RSSItem {
 	title?: unknown;

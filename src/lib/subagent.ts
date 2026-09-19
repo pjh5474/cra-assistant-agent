@@ -1,4 +1,9 @@
-import type { RegulatoryAgentSource, SubagentStatus } from "@/types/agent";
+import type {
+	RegulatoryAgentSource,
+	SubagentActivity,
+	SubagentStatus,
+} from "@/types/agent";
+import type { AgentToolRunState } from "agents";
 
 export function formatTime(value?: string) {
 	if (!value) {
@@ -31,36 +36,75 @@ export function statusLabel(status?: SubagentStatus) {
 	}
 }
 
-
-export function getSubagentInfo(
-	agentType: string,
-  ): {
+export function getSubagentInfo(agentType: string): {
 	source: RegulatoryAgentSource;
 	displayName: string;
-  } {
+} {
 	switch (agentType) {
-	  case "MFDSRegulatoryAgent":
-		return {
-		  source: "MFDS",
-		  displayName: "MFDS Regulatory Agent",
-		};
-  
-	  case "ICHRegulatoryAgent":
-		return {
-		  source: "ICH",
-		  displayName: "ICH Regulatory Agent",
-		};
+		case "MFDSRegulatoryAgent":
+			return {
+				source: "MFDS",
+				displayName: "MFDS Regulatory Agent",
+			};
+
+		case "ICHRegulatoryAgent":
+			return {
+				source: "ICH",
+				displayName: "ICH Regulatory Agent",
+			};
 
 		case "KONECTRegulatoryAgent":
-      return {
-        source: "KONECT",
-        displayName: "KoNECT Regulatory Agent",
-      };
+			return {
+				source: "KONECT",
+				displayName: "KoNECT Regulatory Agent",
+			};
 
-	  default:
-		return {
-		  source: "UNKNOWN",
-		  displayName: agentType,
-		};
-  }
+		default:
+			return {
+				source: "UNKNOWN",
+				displayName: agentType,
+			};
+	}
+}
+
+export function activityFromRun(
+	run: AgentToolRunState | undefined,
+): SubagentActivity | undefined {
+	if (!run) {
+		return undefined;
+	}
+
+	let status: SubagentStatus;
+
+	switch (run.status) {
+		case "running":
+			status = "running";
+			break;
+
+		case "completed":
+			status = "completed";
+			break;
+
+		case "error":
+		case "aborted":
+		case "interrupted":
+			status = "error";
+			break;
+
+		default:
+			status = "idle";
+	}
+
+	const agentInfo = getSubagentInfo(run.agentType);
+
+	return {
+		source: agentInfo.source,
+		displayName: agentInfo.displayName,
+		status,
+		phase: run.progress?.phase,
+		message: run.progress?.message,
+		progress: run.status === "completed" ? 1 : run.progress?.fraction,
+		runId: run.runId,
+		updatedAt: new Date().toISOString(),
+	};
 }
