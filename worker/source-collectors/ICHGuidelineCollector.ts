@@ -1,5 +1,3 @@
-// worker/source-collectors/ICHGuidelineCollector.ts
-
 import type {
 	ICHCollectionFailure,
 	ICHGuidelineCollectionResult,
@@ -7,7 +5,6 @@ import type {
 	ICHImplementationRecord,
 } from "../types/ich.ts";
 import {
-	CRA_RELEVANT_ICH_PREFIXES,
 	ICH_EFFICACY_API_URL,
 } from "../constants.ts";
 

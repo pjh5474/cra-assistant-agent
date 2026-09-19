@@ -13,6 +13,7 @@ import { z } from "zod";
 import { createWorkersAI } from "workers-ai-provider";
 import { createExtensionTools } from "@cloudflare/think/tools/extensions";
 import { MFDSRegulatoryAgent } from "./agents/MFDSRegulatoryAgent.ts";
+import { ICHRegulatoryAgent } from "./agents/ICHRegulatoryAgent.ts";
 import type {
 	MFDSWorkflowInput,
 	RegulatoryWorkflowProgress,
@@ -22,9 +23,9 @@ import type {
 import { RegulatoryBriefingWorkflow } from "./workflows/RegulatoryBriefingWorkflow.ts";
 import { createInitialWorkflowState } from "./helpers/createInitialWorkflowState.ts";
 import { ICHImplementationCollector } from "./source-collectors/ICHImplementationCollector.ts";
-import { ICHGuidelineCollector } from "./source-collectors/ICHGuidlineCollector.ts";
+import { ICHGuidelineCollector } from "./source-collectors/ICHGuidelineCollector.ts";
 
-export { MFDSRegulatoryAgent, RegulatoryBriefingWorkflow };
+export { MFDSRegulatoryAgent, RegulatoryBriefingWorkflow, ICHRegulatoryAgent };
 
 export type SubagentStatus = "idle" | "running" | "completed" | "error";
 
@@ -167,55 +168,110 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 
 	getTools(): ToolSet {
 		return {
-			mfdsRegulatory: agentTool(MFDSRegulatoryAgent, {
-				displayName: "MFDS Regulatory Agent",
-
-				description: `
-  Delegate MFDS regulatory monitoring and analysis to the specialized
-  MFDS sub-agent.
-  
-  Use this agent to collect and analyze newly published MFDS regulatory
-  information relevant to clinical trials and CRA work.
-  
-  The sub-agent performs source collection and CRA relevance analysis
-  internally, and returns a compact result instead of raw RSS content.
-				`.trim(),
-
-				inputSchema: z.object({
-					since: z
-						.string()
-						.optional()
-						.describe(
-							"Start date or ISO 8601 datetime. Examples: 2026-09-10 or 2026-09-10T00:00:00+09:00",
-						),
-
-					purpose: z
-						.enum(["weekly-briefing", "regulatory-check", "cra-learning"])
-						.default("regulatory-check")
-						.describe("Why the MFDS regulatory analysis is being requested."),
-
-					includeIrrelevant: z
-						.boolean()
-						.default(false)
-						.describe(
-							"Whether CRA-irrelevant items should also be returned. Normally false.",
-						),
-				}),
+		  mfdsRegulatory: agentTool(MFDSRegulatoryAgent, {
+			displayName: "MFDS Regulatory Agent",
+	  
+			description: `
+	  Delegate MFDS regulatory monitoring and analysis to the specialized
+	  MFDS sub-agent.
+	  
+	  Use this agent to collect and analyze newly published MFDS regulatory
+	  information relevant to clinical trials and CRA work.
+	  
+	  The sub-agent performs source collection and CRA relevance analysis
+	  internally, and returns a compact result instead of raw RSS content.
+			`.trim(),
+	  
+			inputSchema: z.object({
+			  since: z
+				.string()
+				.optional()
+				.describe(
+				  "Start date or ISO 8601 datetime. Examples: 2026-09-10 or 2026-09-10T00:00:00+09:00",
+				),
+	  
+			  purpose: z
+				.enum([
+				  "weekly-briefing",
+				  "regulatory-check",
+				  "cra-learning",
+				])
+				.default("regulatory-check")
+				.describe(
+				  "Why the MFDS regulatory analysis is being requested.",
+				),
+	  
+			  includeIrrelevant: z
+				.boolean()
+				.default(false)
+				.describe(
+				  "Whether CRA-irrelevant items should also be returned. Normally false.",
+				),
 			}),
-
-			getTodayDate: tool({
-				description: "Get the today's date in YYYY-MM-DD format",
-				inputSchema: z.object({}),
-				execute: async () => {
-					return new Date().toISOString().split("T")[0];
-				},
+		  }),
+	  
+		  ichRegulatory: agentTool(ICHRegulatoryAgent, {
+			displayName: "ICH Regulatory Agent",
+	  
+			description: `
+	  Delegate ICH guideline lookup and regulatory analysis to the specialized
+	  ICH sub-agent.
+	  
+	  Use this agent to check official ICH guideline information,
+	  implementation status, Step status, and official documents relevant
+	  to clinical trials and CRA work.
+	  
+	  Typical use cases include ICH E6/GCP, MFDS implementation status,
+	  and official ICH guideline documents.
+			`.trim(),
+	  
+			inputSchema: z.object({
+			  member: z
+				.string()
+				.optional()
+				.default("MFDS, Republic of Korea")
+				.describe(
+				  "ICH member or regulatory authority to focus on.",
+				),
+	  
+			  guidelinePrefixes: z
+				.array(z.string())
+				.optional()
+				.default(["E6"])
+				.describe(
+				  "Guideline families to include, for example ['E6'] or ['E2', 'E6', 'E8'].",
+				),
+	  
+			  guidelineCodes: z
+				.array(z.string())
+				.optional()
+				.describe(
+				  "Exact guideline codes to include, for example ['E6(R3)'].",
+				),
+	  
+			  includeAllImplementations: z
+				.boolean()
+				.optional()
+				.default(false)
+				.describe(
+				  "Whether implementation information for all ICH members should be retained.",
+				),
 			}),
-
-			...createExtensionTools({
-				manager: this.extensionManager!,
-			}),
+		  }),
+	  
+		  getTodayDate: tool({
+			description: "Get the today's date in YYYY-MM-DD format",
+			inputSchema: z.object({}),
+			execute: async () => {
+			  return new Date().toISOString().split("T")[0];
+			},
+		  }),
+	  
+		  ...createExtensionTools({
+			manager: this.extensionManager!,
+		  }),
 		};
-	}
+	  }
 
 	configureContext(): ContextConfig[] | Promise<ContextConfig[]> {
 		return [

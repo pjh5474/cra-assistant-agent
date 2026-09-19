@@ -174,3 +174,11 @@ export interface ICHWorkflowResult extends SourceWorkflowResult {
 
 	implementationChanges?: ICHImplementationChange[];
 }
+
+export interface ICHWorkflowInput {
+	member?: string;
+	guidelinePrefixes?: string[];
+	guidelineCodes?: string[];
+	since?: string;
+	until?: string;
+}

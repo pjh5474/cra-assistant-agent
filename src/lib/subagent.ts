@@ -1,4 +1,4 @@
-import type { SubagentStatus } from "@/types/agent";
+import type { RegulatoryAgentSource, SubagentStatus } from "@/types/agent";
 
 export function formatTime(value?: string) {
 	if (!value) {
@@ -29,4 +29,38 @@ export function statusLabel(status?: SubagentStatus) {
 		default:
 			return "Idle";
 	}
+}
+
+
+export function getSubagentInfo(
+	agentType: string,
+  ): {
+	source: RegulatoryAgentSource;
+	displayName: string;
+  } {
+	switch (agentType) {
+	  case "MFDSRegulatoryAgent":
+		return {
+		  source: "MFDS",
+		  displayName: "MFDS Regulatory Agent",
+		};
+  
+	  case "ICHRegulatoryAgent":
+		return {
+		  source: "ICH",
+		  displayName: "ICH Regulatory Agent",
+		};
+
+		case "KONECTRegulatoryAgent":
+      return {
+        source: "KONECT",
+        displayName: "KoNECT Regulatory Agent",
+      };
+
+	  default:
+		return {
+		  source: "UNKNOWN",
+		  displayName: agentType,
+		};
+  }
 }

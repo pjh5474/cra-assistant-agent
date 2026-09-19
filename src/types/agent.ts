@@ -2,7 +2,15 @@ import type { RegulatoryWorkflowState } from "../../worker/types/workflow.ts";
 
 export type SubagentStatus = "idle" | "running" | "completed" | "error";
 
+export type RegulatoryAgentSource =
+  | "MFDS"
+  | "ICH"
+  | "KONECT"
+  | "UNKNOWN";
+
 export interface SubagentActivity {
+  source: RegulatoryAgentSource;
+  displayName: string;
 	status: SubagentStatus;
 	phase?: string;
 	message?: string;

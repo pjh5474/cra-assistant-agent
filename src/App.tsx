@@ -13,12 +13,14 @@ import type { AgentToolRunState } from "agents";
 import { Button } from "./components/ui/button";
 import type {
 	CraAssistantAgentState,
+	RegulatoryAgentSource,
 	SubagentActivity,
 	SubagentStatus,
 } from "@/types/agent";
 import { RegulatoryWorkflowProgress } from "./components/workflow/RegulatoryWorkflowProgress.tsx";
 import { RegulatoryBriefingPanel } from "./components/workflow/RegulatoryBriefingPanel.tsx";
 import { ScrollArea } from "./components/ui/scroll-area.tsx";
+import { getSubagentInfo } from "./lib/subagent.ts";
 
 export default function App() {
 	const agent = useAgent<any, CraAssistantAgentState>({
@@ -106,7 +108,11 @@ export default function App() {
 				status = "idle";
 		}
 
-		return {
+		const agentInfo = getSubagentInfo(run.agentType);
+
+  return {
+    source: agentInfo.source,
+    displayName: agentInfo.displayName,
 			status,
 			phase: run.progress?.phase,
 			message: run.progress?.message,

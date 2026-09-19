@@ -152,7 +152,8 @@ export class RegulatoryAnalyzer {
   - sponsor/CRO responsibilities relevant to CRA activities
   
   Do not mark an item relevant merely because it concerns
-  pharmaceutical products or MFDS in general.
+pharmaceutical products, regulatory authorities, or
+clinical research in general.
   
   Usually irrelevant examples include:
   
