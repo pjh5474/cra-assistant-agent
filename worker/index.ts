@@ -25,6 +25,7 @@ import { createInitialWorkflowState } from "./helpers/createInitialWorkflowState
 import { ICHImplementationCollector } from "./source-collectors/ICHImplementationCollector.ts";
 import { ICHGuidelineCollector } from "./source-collectors/ICHGuidelineCollector.ts";
 import type { ICHWorkflowInput, ICHWorkflowResult } from "./types/ich.ts";
+import { KoNECTCollector } from "./source-collectors/KoNECTCollector.ts";
 
 export { MFDSRegulatoryAgent, RegulatoryBriefingWorkflow, ICHRegulatoryAgent };
 
@@ -482,7 +483,7 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	/* Sub-Agent End */
 
 	/*
-	 * ICH Regulatory Agent Start
+	 * ICH Regulatory Agent test Start
 	 */
 	@callable()
 	async testICHImplementation() {
@@ -537,13 +538,29 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 		};
 	}
 
-	/* ICH Regulatory Agent End */
+	/* ICH Regulatory Agent test End */
 
 	/*
-	 * KoNECT Regulatory Agent Start
+	 * KoNECT Regulatory Agent test Start
 	 */
 
-	/* KoNECT Regulatory Agent End */
+	@callable()
+	async testKoNECTCollector() {
+		const collector = new KoNECTCollector();
+
+		const result = await collector.collect({
+			since: "2026-09-01",
+			until: "2026-09-30",
+			includeCourses: true,
+			includeNoticeTypes: ["general", "education", "certification"],
+		});
+
+		console.log("[KoNECT TEST RESULT]", JSON.stringify(result, null, 2));
+
+		return result;
+	}
+
+	/* KoNECT Regulatory Agent test End */
 }
 
 export default {

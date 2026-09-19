@@ -59,20 +59,13 @@ export interface ICHGuidelineRecord {
 export interface ICHImplementationRecord {
 	guidelineCode: string;
 	// E6(R2)
-
 	guidelineTitle: string;
 	// Good Clinical Practice (GCP)
-
 	member: string;
-
 	status: string;
-
 	implementationDate?: string;
-
 	reference?: string;
-
 	referenceUrl?: string;
-
 	collectedAt: string;
 }
 
@@ -81,15 +74,10 @@ export interface ICHImplementationRecord {
  */
 export interface ICHGuidelineChange {
 	monitoringType: "guideline";
-
 	guidelineCode: string;
-
 	changeTypes: ICHChangeType[];
-
 	previous?: ICHGuidelineRecord;
-
 	current: ICHGuidelineRecord;
-
 	detectedAt: string;
 }
 
@@ -98,23 +86,16 @@ export interface ICHGuidelineChange {
  */
 export interface ICHImplementationChange {
 	monitoringType: "implementation";
-
 	guidelineCode: string;
-
 	member: string;
-
 	changeTypes: ICHChangeType[];
-
 	previous?: ICHImplementationRecord;
-
 	current: ICHImplementationRecord;
-
 	detectedAt: string;
 }
 
 export interface ICHCollectionFailure {
 	source: "ICH";
-
 	target:
 		| "guideline-index"
 		| "implementation-index"
@@ -122,7 +103,6 @@ export interface ICHCollectionFailure {
 		| "document";
 
 	url?: string;
-
 	message: string;
 }
 
@@ -131,15 +111,10 @@ export interface ICHCollectionFailure {
  */
 export interface ICHGuidelineCollectionResult {
 	source: "ICH";
-
 	collectedAt: string;
-
 	totalFetched: number;
-
 	totalReturned: number;
-
 	guidelines: ICHGuidelineRecord[];
-
 	failures: ICHCollectionFailure[];
 }
 
@@ -148,15 +123,10 @@ export interface ICHGuidelineCollectionResult {
  */
 export interface ICHImplementationCollectionResult {
 	source: "ICH";
-
 	collectedAt: string;
-
 	totalFetched: number;
-
 	totalReturned: number;
-
 	implementations: ICHImplementationRecord[];
-
 	failures: ICHCollectionFailure[];
 }
 
@@ -165,13 +135,9 @@ export interface ICHImplementationCollectionResult {
  */
 export interface ICHWorkflowResult extends SourceWorkflowResult {
 	source: "ICH";
-
 	failures: ICHCollectionFailure[];
-
 	items: AnalyzedRegulatoryItem[];
-
 	guidelineChanges?: ICHGuidelineChange[];
-
 	implementationChanges?: ICHImplementationChange[];
 }
 

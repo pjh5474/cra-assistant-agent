@@ -24,14 +24,10 @@ export interface MFDSCollectionFailure {
 
 export interface MFDSCollectionResult {
 	source: "MFDS";
-
 	collectedAt: string;
-
 	totalFetched: number;
 	totalReturned: number;
-
 	items: RegulatoryItem[];
-
 	failures: MFDSCollectionFailure[];
 }
 
@@ -53,6 +49,5 @@ export interface MFDSCollectionFailure {
 
 export interface MFDSWorkflowResult extends SourceWorkflowResult {
 	source: "MFDS";
-
 	failures: MFDSCollectionFailure[];
 }

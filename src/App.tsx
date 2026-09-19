@@ -135,6 +135,12 @@ export default function App() {
 		console.log(efficacyResult);
 	};
 
+	const handleTestKoNECTCollector = async () => {
+		const result = await agent.stub.testKoNECTCollector();
+
+		console.log(result);
+	};
+
 	const workflow = agent.state?.regulatoryWorkflow;
 	const briefing = workflow?.briefing;
 	return (
@@ -203,6 +209,10 @@ export default function App() {
 
 							<Button onClick={handleTestICHImplementation} className="w-full">
 								Test ICH Implementation
+							</Button>
+
+							<Button onClick={handleTestKoNECTCollector} className="w-full">
+								Test KoNECT Collector
 							</Button>
 
 							<RegulatoryWorkflowProgress workflow={workflow} />

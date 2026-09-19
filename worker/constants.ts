@@ -174,3 +174,45 @@ export function normalizeICHMember(value: string): ICHMember | undefined {
 
 	return match?.value;
 }
+
+export const KONECT_HEADERS = {
+	"User-Agent":
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+		"(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+
+	Accept:
+		"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+
+	"Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+
+	Referer: "https://lms.konect.or.kr/web/index.do",
+};
+
+export const KONECT_BASE_URL = "https://lms.konect.or.kr";
+
+export const NOTICE_PATH = "/web/center/noticeList.do";
+
+export const COURSE_PATH = "/web/course/courseList.do";
+
+export const NOTICE_TYPES = {
+	general: "D",
+	education: "N",
+	certification: "Y",
+} as const;
+
+export const CRA_CATEGORY_ID = "306";
+
+export const NOTICE_TARGETS = [
+	{
+		type: "general",
+		certifiedYn: "D",
+	},
+	{
+		type: "education",
+		certifiedYn: "N",
+	},
+	{
+		type: "certification",
+		certifiedYn: "Y",
+	},
+] as const;
