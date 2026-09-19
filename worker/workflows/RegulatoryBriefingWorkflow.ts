@@ -137,7 +137,12 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 				stage: "sourceProcessing",
 				step: "sourceProcessing",
 				percent: 0.35,
-				message: `MFDS processing completed: ${mfdsResult.relevantCount} CRA-relevant updates`,
+				message:
+					`MFDS processing completed: ` +
+					`${mfdsResult.manifest?.newCount ?? 0} new, ` +
+					`${mfdsResult.manifest?.changedCount ?? 0} changed, ` +
+					`${mfdsResult.manifest?.unchangedCount ?? 0} unchanged, ` +
+					`${mfdsResult.relevantCount} CRA-relevant analyzed update(s)`,
 			});
 		}
 

@@ -462,7 +462,7 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	}
 
 	async collectMFDSForWorkflow(input: MFDSWorkflowInput) {
-		using mfds = await this.dynamicAgents.get(
+		const mfds = await this.dynamicAgents.get(
 			MFDSRegulatoryAgent,
 			"mfds-regulatory",
 		);
@@ -473,7 +473,7 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	async collectICHForWorkflow(
 		input: ICHWorkflowInput,
 	): Promise<ICHWorkflowResult> {
-		using ich = await this.dynamicAgents.get(
+		const ich = await this.dynamicAgents.get(
 			ICHRegulatoryAgent,
 			"ich-regulatory",
 		);
@@ -484,7 +484,7 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	async collectKoNECTForWorkflow(
 		input: KoNECTWorkflowInput,
 	): Promise<KoNECTWorkflowResult> {
-		using konect = await this.dynamicAgents.get(
+		const konect = await this.dynamicAgents.get(
 			KoNECTRegulatoryAgent,
 			"konect-regulatory",
 		);
@@ -674,6 +674,21 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	}
 
 	/* KoNECT Regulatory Agent test End */
+
+	/*
+	 * Manifest Store test Start
+	 */
+	@callable()
+	async testMFDSManifestStore() {
+		const mfds = await this.dynamicAgents.get(
+			MFDSRegulatoryAgent,
+			"mfds-regulatory",
+		);
+
+		return await mfds.testManifestStore();
+	}
+
+	/* Manifest Store test End */
 }
 
 export default {

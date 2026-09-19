@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isToolUIPart } from "ai";
 import type { CraAssistantAgentState } from "@/types/agent";
 import { activityFromRun, normalizeChatActivity } from "./lib/subagent.ts";
+import { Button } from "./components/ui/button.tsx";
 
 export default function App() {
 	const agent = useAgent<any, CraAssistantAgentState>({
@@ -142,6 +143,16 @@ export default function App() {
 		stop();
 	};
 
+	const handleTestMFDSManifest = async () => {
+		try {
+			const result = await agent.stub.testMFDSManifestStore();
+
+			console.log("[MFDS Manifest Test Result]", result);
+		} catch (error) {
+			console.error("[MFDS Manifest Test Failed]", error);
+		}
+	};
+
 	const workflow = agent.state?.regulatoryWorkflow;
 
 	return (
@@ -211,6 +222,13 @@ export default function App() {
 				<aside className="space-y-4">
 					<AgentOverview />
 					<CurrentActivityCard activity={currentActivity} />
+					<Button
+						type="button"
+						variant="outline"
+						onClick={handleTestMFDSManifest}
+					>
+						Test MFDS Manifest
+					</Button>
 				</aside>
 			</main>
 		</div>
