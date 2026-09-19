@@ -25,12 +25,12 @@ import { createInitialWorkflowState } from "./helpers/createInitialWorkflowState
 import { ICHImplementationCollector } from "./source-collectors/ICHImplementationCollector.ts";
 import { ICHGuidelineCollector } from "./source-collectors/ICHGuidelineCollector.ts";
 import type { ICHWorkflowInput, ICHWorkflowResult } from "./types/ich.ts";
-import { KoNECTCollector } from "./source-collectors/KoNECTCollector.ts";
 import { KoNECTRegulatoryAgent } from "./agents/KoNECTRegulatoryAgent.ts";
 import type {
 	KoNECTWorkflowInput,
 	KoNECTWorkflowResult,
 } from "./types/konect.ts";
+import type { AgentMemorySnapshot } from "./types/agent-memory.ts";
 
 export {
 	MFDSRegulatoryAgent,
@@ -571,58 +571,58 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	/*
 	 * ICH Regulatory Agent test Start
 	 */
-	@callable()
-	async testICHImplementation() {
-		const collector = new ICHImplementationCollector();
+	// @callable()
+	// async testICHImplementation() {
+	// 	const collector = new ICHImplementationCollector();
 
-		const result = await collector.collect({
-			partyId: 30,
-			// guidelineId: 72,
-		});
+	// 	const result = await collector.collect({
+	// 		partyId: 30,
+	// 		// guidelineId: 72,
+	// 	});
 
-		console.log("[ICH TEST RESULT]", JSON.stringify(result, null, 2));
+	// 	console.log("[ICH TEST RESULT]", JSON.stringify(result, null, 2));
 
-		return result;
-	}
+	// 	return result;
+	// }
 
-	@callable()
-	async testICHEfficacyPage() {
-		const response = await fetch(
-			"https://www.ich.org/page/efficacy-guidelines",
-		);
+	// @callable()
+	// async testICHEfficacyPage() {
+	// 	const response = await fetch(
+	// 		"https://www.ich.org/page/efficacy-guidelines",
+	// 	);
 
-		const html = await response.text();
+	// 	const html = await response.text();
 
-		const result = {
-			status: response.status,
-			hasE6R3: html.includes("E6(R3)"),
-			hasDocumentPdf: html.includes("document-pdf"),
-			hasConsolidatedGuideline: html.includes("Consolidated Guideline"),
-			length: html.length,
-		};
+	// 	const result = {
+	// 		status: response.status,
+	// 		hasE6R3: html.includes("E6(R3)"),
+	// 		hasDocumentPdf: html.includes("document-pdf"),
+	// 		hasConsolidatedGuideline: html.includes("Consolidated Guideline"),
+	// 		length: html.length,
+	// 	};
 
-		console.log("[ICH Efficacy Test]", result);
+	// 	console.log("[ICH Efficacy Test]", result);
 
-		const collector = new ICHGuidelineCollector();
+	// 	const collector = new ICHGuidelineCollector();
 
-		const efficacyResult = await collector.collect();
+	// 	const efficacyResult = await collector.collect();
 
-		const e6r3 = efficacyResult.guidelines.find(
-			(item) => item.displayCode === "E6(R3)",
-		);
+	// 	const e6r3 = efficacyResult.guidelines.find(
+	// 		(item) => item.displayCode === "E6(R3)",
+	// 	);
 
-		console.log("[ICH Efficacy Test - E6(R3)]", e6r3);
+	// 	console.log("[ICH Efficacy Test - E6(R3)]", e6r3);
 
-		return {
-			pageTest: result,
-			collectorTest: {
-				totalFetched: efficacyResult.totalFetched,
-				totalReturned: efficacyResult.totalReturned,
-				failures: efficacyResult.failures,
-				e6r3,
-			},
-		};
-	}
+	// 	return {
+	// 		pageTest: result,
+	// 		collectorTest: {
+	// 			totalFetched: efficacyResult.totalFetched,
+	// 			totalReturned: efficacyResult.totalReturned,
+	// 			failures: efficacyResult.failures,
+	// 			e6r3,
+	// 		},
+	// 	};
+	// }
 
 	/* ICH Regulatory Agent test End */
 
@@ -630,65 +630,126 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	 * KoNECT Regulatory Agent test Start
 	 */
 
-	@callable()
-	async testKoNECTCollector() {
-		const collector = new KoNECTCollector();
+	// @callable()
+	// async testKoNECTCollector() {
+	// 	const collector = new KoNECTCollector();
 
-		const result = await collector.collect({
-			since: "2026-09-01",
-			until: "2026-09-30",
-			includeCourses: true,
-			includeNoticeTypes: ["general", "education", "certification"],
-		});
+	// 	const result = await collector.collect({
+	// 		since: "2026-09-01",
+	// 		until: "2026-09-30",
+	// 		includeCourses: true,
+	// 		includeNoticeTypes: ["general", "education", "certification"],
+	// 	});
 
-		console.log("[KoNECT TEST RESULT]", JSON.stringify(result, null, 2));
+	// 	console.log("[KoNECT TEST RESULT]", JSON.stringify(result, null, 2));
 
-		return result;
-	}
+	// 	return result;
+	// }
 
-	@callable()
-	async testKoNECTSubAgent() {
-		console.log("[CraAssistantAgent] testKoNECTSubAgent start");
+	// @callable()
+	// async testKoNECTSubAgent() {
+	// 	console.log("[CraAssistantAgent] testKoNECTSubAgent start");
 
-		using konect = await this.dynamicAgents.get(
-			KoNECTRegulatoryAgent,
-			"konect-regulatory",
-		);
+	// 	using konect = await this.dynamicAgents.get(
+	// 		KoNECTRegulatoryAgent,
+	// 		"konect-regulatory",
+	// 	);
 
-		const result = await konect.collectAndAnalyzeForWorkflow({
-			since: "2026-09-01",
-			until: "2026-09-30",
-			includeCourses: true,
-			includeNoticeTypes: ["general", "education", "certification"],
-			includeIrrelevant: false,
-		});
+	// 	const result = await konect.collectAndAnalyzeForWorkflow({
+	// 		since: "2026-09-01",
+	// 		until: "2026-09-30",
+	// 		includeCourses: true,
+	// 		includeNoticeTypes: ["general", "education", "certification"],
+	// 		includeIrrelevant: false,
+	// 	});
 
-		console.log("[CraAssistantAgent] testKoNECTSubAgent complete", {
-			totalFetched: result.totalFetched,
-			candidateCount: result.candidateCount,
-			relevantCount: result.relevantCount,
-			warnings: result.warnings,
-		});
+	// 	console.log("[CraAssistantAgent] testKoNECTSubAgent complete", {
+	// 		totalFetched: result.totalFetched,
+	// 		candidateCount: result.candidateCount,
+	// 		relevantCount: result.relevantCount,
+	// 		warnings: result.warnings,
+	// 	});
 
-		return result;
-	}
+	// 	return result;
+	// }
 
 	/* KoNECT Regulatory Agent test End */
 
 	/*
 	 * Manifest Store test Start
 	 */
+	// @callable()
+	// async testMFDSManifestStore() {
+	// 	const mfds = await this.dynamicAgents.get(
+	// 		MFDSRegulatoryAgent,
+	// 		"mfds-regulatory",
+	// 	);
+
+	// 	return await mfds.testManifestStore();
+	// }
+
+	/* Manifest Store test End */
+
+	/*
+	 * Regulatory Memory Store
+	 */
 	@callable()
-	async testMFDSManifestStore() {
+	@callable()
+	async getRegulatoryMemory(): Promise<AgentMemorySnapshot> {
+		console.log("[CraAssistantAgent] regulatory memory snapshot requested");
+
 		const mfds = await this.dynamicAgents.get(
 			MFDSRegulatoryAgent,
 			"mfds-regulatory",
 		);
 
-		return await mfds.testManifestStore();
+		const ich = await this.dynamicAgents.get(
+			ICHRegulatoryAgent,
+			"ich-regulatory",
+		);
+
+		const konect = await this.dynamicAgents.get(
+			KoNECTRegulatoryAgent,
+			"konect-regulatory",
+		);
+
+		const mfdsSnapshot = await mfds.getMemorySnapshot();
+
+		const ichSnapshot = await ich.getMemorySnapshot();
+
+		const konectSnapshot = await konect.getMemorySnapshot();
+
+		const snapshots = [mfdsSnapshot, ichSnapshot, konectSnapshot];
+
+		const memory: AgentMemorySnapshot = {
+			generatedAt: new Date().toISOString(),
+
+			sources: snapshots.map((snapshot) => snapshot.summary),
+
+			items: snapshots
+				.flatMap((snapshot) => snapshot.items)
+				.sort((a, b) => {
+					return (
+						new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime()
+					);
+				}),
+		};
+
+		console.log("[CraAssistantAgent] regulatory memory snapshot completed", {
+			sources: memory.sources.length,
+
+			items: memory.items.length,
+
+			relevant: memory.sources.reduce(
+				(total, source) => total + source.relevantCount,
+				0,
+			),
+		});
+
+		return memory;
 	}
 
-	/* Manifest Store test End */
+	/* Regulatory Memory Store End */
 }
 
 export default {

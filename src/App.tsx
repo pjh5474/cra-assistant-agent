@@ -14,6 +14,8 @@ import type { CraAssistantAgentState } from "@/types/agent";
 import type { WorkflowRunParams } from "@/types/workflows";
 import { activityFromRun, normalizeChatActivity } from "./lib/subagent.ts";
 import { Button } from "./components/ui/button.tsx";
+import { AgentMemoryPanel } from "./components/memory/AgentMemoryPanel.tsx";
+import type { AgentMemorySnapshot } from "./types/agent-memory.ts";
 
 export default function App() {
 	const agent = useAgent<any, CraAssistantAgentState>({
@@ -23,6 +25,12 @@ export default function App() {
 
 	const [input, setInput] = useState("");
 	const [wasStopped, setWasStopped] = useState(false);
+
+	const [memory, setMemory] = useState<AgentMemorySnapshot | undefined>(
+		undefined,
+	);
+
+	const [memoryLoading, setMemoryLoading] = useState(false);
 
 	const {
 		messages,
@@ -144,13 +152,37 @@ export default function App() {
 		stop();
 	};
 
-	const handleTestMFDSManifest = async () => {
+	const handleTestMFDSMemory = async () => {
 		try {
-			const result = await agent.stub.testMFDSManifestStore();
+			const result = await agent.stub.getRegulatoryMemory();
 
-			console.log("[MFDS Manifest Test Result]", result);
+			console.log("[MFDS Memory Test Result]", result);
 		} catch (error) {
-			console.error("[MFDS Manifest Test Failed]", error);
+			console.error("[MFDS Memory Test Failed]", error);
+		}
+	};
+
+	const handleMemoryRefresh = async () => {
+		if (memoryLoading) {
+			return;
+		}
+
+		setMemoryLoading(true);
+
+		try {
+			const snapshot = await agent.stub.getRegulatoryMemory();
+
+			setMemory(snapshot);
+
+			console.log("[App] regulatory memory loaded", {
+				sources: snapshot.sources.length,
+
+				items: snapshot.items.length,
+			});
+		} catch (error) {
+			console.error("[App] failed to load regulatory memory", error);
+		} finally {
+			setMemoryLoading(false);
 		}
 	};
 
@@ -171,6 +203,7 @@ export default function App() {
 					<TabsList>
 						<TabsTrigger value="chat">Chat</TabsTrigger>
 						<TabsTrigger value="workflow">Regulatory Workflow</TabsTrigger>
+						<TabsTrigger value="memory">Agent Memory</TabsTrigger>
 					</TabsList>
 
 					<TabsContent value="chat" className="space-y-6">
@@ -218,6 +251,14 @@ export default function App() {
 					<TabsContent value="workflow" keepMounted>
 						<WorkflowPanel workflow={workflow} onRun={handleWorkflowStart} />
 					</TabsContent>
+
+					<TabsContent value="memory" keepMounted>
+						<AgentMemoryPanel
+							memory={memory}
+							loading={memoryLoading}
+							onRefresh={handleMemoryRefresh}
+						/>
+					</TabsContent>
 				</Tabs>
 
 				<aside className="space-y-4">
@@ -226,9 +267,9 @@ export default function App() {
 					<Button
 						type="button"
 						variant="outline"
-						onClick={handleTestMFDSManifest}
+						onClick={handleTestMFDSMemory}
 					>
-						Test MFDS Manifest
+						Test MFDS Memory
 					</Button>
 				</aside>
 			</main>

@@ -17,6 +17,7 @@ import { createRegulatoryContentHash } from "../helpers/regulatoryContentHash.ts
 import { RegulatoryAnalysisStore } from "../stores/RegulatoryAnalysisStore.ts";
 import type { RegulatoryAnalysisRecord } from "../types/regulatory-analysis.ts";
 import type { BriefingCandidate } from "../types/regulatory-briefing.ts";
+import { RegulatoryMemoryStore } from "../stores/RegulatoryMemoryStore.ts";
 
 export class MFDSRegulatoryAgent extends Think<Env> {
 	maxSteps = 10;
@@ -498,52 +499,61 @@ export class MFDSRegulatoryAgent extends Think<Env> {
 		return new RegulatoryAnalysisStore(this.sql.bind(this));
 	}
 
-	@callable()
-	async testManifestStore() {
-		const store = this.getManifestStore();
-
-		const testId = `manifest-test-${Date.now()}`;
-
-		const base = {
-			source: "MFDS" as const,
-
-			sourceId: testId,
-
-			url: "https://example.com/manifest-test",
-
-			publishedAt: "2026-09-19T00:00:00+09:00",
-		};
-
-		const first = store.checkAndUpsert({
-			...base,
-			title: "Manifest Test Item",
-			contentHash: "hash-v1",
-		});
-
-		const second = store.checkAndUpsert({
-			...base,
-			title: "Manifest Test Item",
-			contentHash: "hash-v1",
-		});
-
-		const third = store.checkAndUpsert({
-			...base,
-			title: "Manifest Test Item Updated",
-			contentHash: "hash-v2",
-		});
-
-		console.log("[MFDSRegulatoryAgent] manifest test", {
-			testId,
-			first: first.status,
-			second: second.status,
-			third: third.status,
-		});
-
-		return {
-			testId,
-			first,
-			second,
-			third,
-		};
+	private getMemoryStore() {
+		return new RegulatoryMemoryStore(this.sql.bind(this));
 	}
+
+	@callable()
+	getMemorySnapshot() {
+		return this.getMemoryStore().getSnapshot("MFDS");
+	}
+
+	// @callable()
+	// async testManifestStore() {
+	// 	const store = this.getManifestStore();
+
+	// 	const testId = `manifest-test-${Date.now()}`;
+
+	// 	const base = {
+	// 		source: "MFDS" as const,
+
+	// 		sourceId: testId,
+
+	// 		url: "https://example.com/manifest-test",
+
+	// 		publishedAt: "2026-09-19T00:00:00+09:00",
+	// 	};
+
+	// 	const first = store.checkAndUpsert({
+	// 		...base,
+	// 		title: "Manifest Test Item",
+	// 		contentHash: "hash-v1",
+	// 	});
+
+	// 	const second = store.checkAndUpsert({
+	// 		...base,
+	// 		title: "Manifest Test Item",
+	// 		contentHash: "hash-v1",
+	// 	});
+
+	// 	const third = store.checkAndUpsert({
+	// 		...base,
+	// 		title: "Manifest Test Item Updated",
+	// 		contentHash: "hash-v2",
+	// 	});
+
+	// 	console.log("[MFDSRegulatoryAgent] manifest test", {
+	// 		testId,
+	// 		first: first.status,
+	// 		second: second.status,
+	// 		third: third.status,
+	// 	});
+
+	// 	return {
+	// 		testId,
+	// 		first,
+	// 		second,
+	// 		third,
+	// 	};
+	// }
 }

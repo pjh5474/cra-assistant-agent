@@ -24,6 +24,8 @@ import { createRegulatoryContentHash } from "../helpers/regulatoryContentHash.ts
 import { RegulatoryAnalysisStore } from "../stores/RegulatoryAnalysisStore.ts";
 import type { RegulatoryAnalysisRecord } from "../types/regulatory-analysis.ts";
 import type { BriefingCandidate } from "../types/regulatory-briefing.ts";
+import { RegulatoryMemoryStore } from "../stores/RegulatoryMemoryStore.ts";
+import { callable } from "agents";
 
 const ichCollectInputSchema = z.object({
 	includeIrrelevant: z
@@ -489,6 +491,15 @@ export class ICHRegulatoryAgent extends Think<Env> {
 
 	private getAnalysisStore() {
 		return new RegulatoryAnalysisStore(this.sql.bind(this));
+	}
+
+	private getMemoryStore() {
+		return new RegulatoryMemoryStore(this.sql.bind(this));
+	}
+
+	@callable()
+	getMemorySnapshot() {
+		return this.getMemoryStore().getSnapshot("ICH");
 	}
 }
 
