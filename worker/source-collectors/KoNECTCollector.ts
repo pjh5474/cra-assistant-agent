@@ -22,6 +22,8 @@ export interface KoNECTCollectorInput {
 
 	includeCourses?: boolean;
 
+	onlyOpenCourses?: boolean;
+
 	includeNoticeTypes?: KoNECTNoticeType[];
 
 	noticePageIndex?: number;
@@ -156,15 +158,16 @@ export class KoNECTCollector {
 
 		/*
 		 * Course는 공지 publishedAt이 없으므로
-		 * courseStart 기준으로 기간 필터링.
+		 * 신청 가능한 기간 필터링.
 		 *
 		 * 날짜가 없는 항목은 false-negative 방지를 위해 유지.
 		 */
-		const filteredCourses = courses
-			.filter((item) =>
-				isWithinRange(item.courseStart, input.since, input.until),
-			)
-			.sort(compareCourseDateDesc);
+
+		const filteredCourses = input.onlyOpenCourses
+			? courses
+					.filter((course) => isCourseApplicationOpen(course, new Date()))
+					.sort(compareCourseDateDesc)
+			: courses.sort(compareCourseDateDesc);
 
 		const totalFetched = notices.length + courses.length;
 
@@ -172,13 +175,9 @@ export class KoNECTCollector {
 
 		console.log("[KoNECTCollector] completed", {
 			noticesFetched: notices.length,
-
 			noticesReturned: filteredNotices.length,
-
 			coursesFetched: courses.length,
-
 			coursesReturned: filteredCourses.length,
-
 			failureCount: failures.length,
 		});
 
@@ -280,6 +279,46 @@ function parseDateToTime(value: string): number | undefined {
 	}
 
 	return timestamp;
+}
+
+function parseDateStart(value: string): Date | undefined {
+	const date = new Date(`${value}T00:00:00+09:00`);
+
+	return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function parseDateEnd(value: string): Date | undefined {
+	const date = new Date(`${value}T23:59:59.999+09:00`);
+
+	return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function isCourseApplicationOpen(course: KoNECTCourseItem, now: Date): boolean {
+	if (course.status !== "교육신청") {
+		return false;
+	}
+
+	if (!course.applicationStart || !course.applicationEnd) {
+		/*
+		 * 상태가 "교육신청"인데 신청기간 파싱이 안 된 경우,
+		 * KoNECT의 상태값을 우선 신뢰할지 결정해야 합니다.
+		 *
+		 * false negative 방지를 위해 여기서는 true.
+		 */
+		return true;
+	}
+
+	const start = parseDateStart(course.applicationStart);
+
+	const end = parseDateEnd(course.applicationEnd);
+
+	if (!start || !end) {
+		return true;
+	}
+
+	const time = now.getTime();
+
+	return time >= start.getTime() && time <= end.getTime();
 }
 
 /* -------------------------------------------------------------------------- */

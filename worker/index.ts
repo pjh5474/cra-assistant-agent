@@ -26,8 +26,18 @@ import { ICHImplementationCollector } from "./source-collectors/ICHImplementatio
 import { ICHGuidelineCollector } from "./source-collectors/ICHGuidelineCollector.ts";
 import type { ICHWorkflowInput, ICHWorkflowResult } from "./types/ich.ts";
 import { KoNECTCollector } from "./source-collectors/KoNECTCollector.ts";
+import { KoNECTRegulatoryAgent } from "./agents/KoNECTRegulatoryAgent.ts";
+import type {
+	KoNECTWorkflowInput,
+	KoNECTWorkflowResult,
+} from "./types/konect.ts";
 
-export { MFDSRegulatoryAgent, RegulatoryBriefingWorkflow, ICHRegulatoryAgent };
+export {
+	MFDSRegulatoryAgent,
+	RegulatoryBriefingWorkflow,
+	ICHRegulatoryAgent,
+	KoNECTRegulatoryAgent,
+};
 
 export type SubagentStatus = "idle" | "running" | "completed" | "error";
 
@@ -58,6 +68,7 @@ export type CraAssistantAgentState = {
 };
 
 export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
+	maxSteps = 8;
 	extensionLoader = this.env.LOADER;
 
 	/*
@@ -189,7 +200,7 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 						.string()
 						.optional()
 						.describe(
-							"Start date or ISO 8601 datetime. Examples: 2026-09-10 or 2026-09-10T00:00:00+09:00",
+							"Start date in YYYY-MM-DD or ISO 8601 format. For 'today', use the actual current date provided by the agent context.",
 						),
 
 					purpose: z
@@ -249,6 +260,76 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 						.default(false)
 						.describe(
 							"Whether implementation information for all ICH members should be retained.",
+						),
+				}),
+			}),
+
+			konectRegulatory: agentTool(KoNECTRegulatoryAgent, {
+				displayName: "KoNECT Regulatory Agent",
+
+				description: `
+			  Delegate KoNECT notice and CRA education lookup to the specialized
+			  KoNECT sub-agent.
+			  
+			  Use this agent to check:
+			  - KoNECT general notices
+			  - KoNECT education notices
+			  - KoNECT certification notices
+			  - CRA education and training courses
+			  - CRA 신규자 / 심화 / 보수 courses
+			  - current CRA course application status
+			  - GCP-related education information
+			  
+			  The sub-agent distinguishes regulatory or clinical-trial-related notices
+			  from professional-development course information.
+			  
+			  KoNECT training courses should not be interpreted as new regulatory
+			  requirements.
+				`.trim(),
+
+				inputSchema: z.object({
+					since: z
+						.string()
+						.optional()
+						.describe(
+							"Start date or ISO 8601 datetime. Used to filter KoNECT notices and course dates.",
+						),
+
+					until: z
+						.string()
+						.optional()
+						.describe(
+							"End date or ISO 8601 datetime. Used to filter KoNECT notices and course dates.",
+						),
+
+					includeCourses: z
+						.boolean()
+						.optional()
+						.default(true)
+						.describe(
+							"Whether CRA education and course information should be included.",
+						),
+
+					onlyOpenCourses: z
+						.boolean()
+						.optional()
+						.default(true)
+						.describe(
+							"Whether to return only CRA courses that are currently open for application.",
+						),
+
+					includeNoticeTypes: z
+						.array(z.enum(["general", "education", "certification"]))
+						.optional()
+						.default(["general", "education", "certification"])
+						.describe("KoNECT notice categories to include."),
+
+					includeIrrelevant: z
+						.boolean()
+						.optional()
+						.default(false)
+						.describe(
+							"Whether CRA-irrelevant items should also be returned. Normally false.",
 						),
 				}),
 			}),
@@ -381,23 +462,34 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	}
 
 	async collectMFDSForWorkflow(input: MFDSWorkflowInput) {
-		const mfds = await this.dynamicAgents.get(
+		using mfds = await this.dynamicAgents.get(
 			MFDSRegulatoryAgent,
 			"mfds-regulatory",
 		);
 
-		return mfds.collectAndAnalyzeForWorkflow(input);
+		return await mfds.collectAndAnalyzeForWorkflow(input);
 	}
 
 	async collectICHForWorkflow(
 		input: ICHWorkflowInput,
 	): Promise<ICHWorkflowResult> {
-		const ich = await this.dynamicAgents.get(
+		using ich = await this.dynamicAgents.get(
 			ICHRegulatoryAgent,
 			"ich-regulatory",
 		);
 
 		return ich.collectAndAnalyzeForWorkflow(input);
+	}
+
+	async collectKoNECTForWorkflow(
+		input: KoNECTWorkflowInput,
+	): Promise<KoNECTWorkflowResult> {
+		using konect = await this.dynamicAgents.get(
+			KoNECTRegulatoryAgent,
+			"konect-regulatory",
+		);
+
+		return konect.collectAndAnalyzeForWorkflow(input);
 	}
 
 	override async onWorkflowProgress(
@@ -462,18 +554,12 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 			...this.state,
 			subagents: {
 				...this.state.subagents,
-
 				[key]: {
 					status: progress.fraction === 1 ? "completed" : "running",
-
 					phase: progress.phase,
-
 					message: progress.message,
-
 					progress: progress.fraction,
-
 					runId: run.runId,
-
 					updatedAt: new Date().toISOString(),
 				},
 			},
@@ -556,6 +642,33 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 		});
 
 		console.log("[KoNECT TEST RESULT]", JSON.stringify(result, null, 2));
+
+		return result;
+	}
+
+	@callable()
+	async testKoNECTSubAgent() {
+		console.log("[CraAssistantAgent] testKoNECTSubAgent start");
+
+		using konect = await this.dynamicAgents.get(
+			KoNECTRegulatoryAgent,
+			"konect-regulatory",
+		);
+
+		const result = await konect.collectAndAnalyzeForWorkflow({
+			since: "2026-09-01",
+			until: "2026-09-30",
+			includeCourses: true,
+			includeNoticeTypes: ["general", "education", "certification"],
+			includeIrrelevant: false,
+		});
+
+		console.log("[CraAssistantAgent] testKoNECTSubAgent complete", {
+			totalFetched: result.totalFetched,
+			candidateCount: result.candidateCount,
+			relevantCount: result.relevantCount,
+			warnings: result.warnings,
+		});
 
 		return result;
 	}

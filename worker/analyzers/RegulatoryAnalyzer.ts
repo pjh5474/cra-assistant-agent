@@ -5,6 +5,7 @@ import type {
 	RegulatoryAnalysisResult,
 	AnalyzedRegulatoryItem,
 } from "../types/regulatory.ts";
+import { stripJsonCodeFence } from "../helpers/stripJsonCodeFence.ts";
 
 const analyzedItemSchema = z.object({
 	id: z.string(),
@@ -39,6 +40,8 @@ export interface RegulatoryAnalyzerOptions {
 	includeIrrelevant?: boolean;
 	batchSize?: number;
 	maxDescriptionLength?: number;
+
+	abortSignal?: AbortSignal;
 
 	onBatchProgress?: (
 		completedBatches: number,
@@ -76,6 +79,11 @@ export class RegulatoryAnalyzer {
 		const analyzedItems: AnalyzedRegulatoryItem[] = [];
 
 		for (let index = 0; index < batches.length; index++) {
+			if (options.abortSignal?.aborted) {
+				console.log("[RegulatoryAnalyzer] abort signal detected");
+				throw new DOMException("Regulatory analysis aborted", "AbortError");
+			}
+
 			const batch = batches[index];
 
 			console.log("[RegulatoryAnalyzer] batch start", {
@@ -84,7 +92,11 @@ export class RegulatoryAnalyzer {
 				itemCount: batch.length,
 			});
 
-			const result = await this.analyzeBatch(batch, maxDescriptionLength);
+			const result = await this.analyzeBatch(
+				batch,
+				maxDescriptionLength,
+				options.abortSignal,
+			);
 
 			if (result) {
 				analyzedItems.push(...result);
@@ -110,6 +122,7 @@ export class RegulatoryAnalyzer {
 	private async analyzeBatch(
 		items: RegulatoryItem[],
 		maxDescriptionLength: number,
+		abortSignal?: AbortSignal,
 	): Promise<AnalyzedRegulatoryItem[] | undefined> {
 		const compactItems = items.map((item) => ({
 			id: item.id,
@@ -131,6 +144,7 @@ export class RegulatoryAnalyzer {
 		try {
 			const result = await generateText({
 				model: this.model,
+				abortSignal: abortSignal,
 				output: Output.object({
 					schema: analysisSchema,
 				}),
@@ -163,6 +177,38 @@ Do not mark an item relevant merely because it concerns
 pharmaceutical products, regulatory authorities, or
 clinical research in general.
 
+KoNECT education or course items are professional-development
+information, not regulatory changes.
+
+A KoNECT education or course item may still be meaningfully relevant
+to CRA work when it is specifically intended for CRA professionals
+or directly supports CRA/GCP professional development.
+
+Examples of relevant KoNECT professional-development items include:
+
+- CRA 신규자, 심화, or 보수 training
+- GCP training intended for clinical-trial professionals
+- monitoring-related practical education
+- sponsor/CRO operational training relevant to CRA work
+- education concerning informed consent, safety reporting,
+  essential documents, protocol compliance, or inspection readiness
+
+For KoNECT education items, distinguish CRA relevance from
+regulatory impact.
+
+A relevant KoNECT training item should normally be treated as
+professional-development information with LOW or MEDIUM priority,
+unless the supplied information independently indicates a meaningful
+operational or compliance impact.
+
+Do not describe the publication or availability of a KoNECT training
+course as:
+- a regulatory change
+- a new legal requirement
+- a mandatory requirement
+
+unless the supplied input explicitly supports such a conclusion.
+
 Usually irrelevant examples include:
 
 - food regulations
@@ -171,6 +217,8 @@ Usually irrelevant examples include:
 clinical-trial impact
 - unrelated recruitment or organizational announcements
 - administrative notices unrelated to clinical trials
+- KoNECT website maintenance, contact information, or general
+administrative notices with no meaningful CRA or clinical-trial impact
 
 Priority:
 
@@ -206,6 +254,9 @@ Rules:
 6. Keep outputs concise.
 7. Multiple categories are allowed.
 8. Return exactly one result for every input item.
+9. Return only valid JSON matching the required schema.
+10. Do not wrap the JSON response in Markdown code fences.
+11. Do not include explanatory text before or after the JSON.
 	  `.trim(),
 				prompt: `
 Analyze the following regulatory items.
@@ -216,6 +267,37 @@ ${JSON.stringify(compactItems, null, 2)}
 			return this.mergeWithSource(items, result.output);
 		} catch (error) {
 			console.error("[RegulatoryAnalyzer] generateText failed", error);
+
+			const rawText =
+				typeof error === "object" &&
+				error !== null &&
+				"text" in error &&
+				typeof error.text === "string"
+					? error.text
+					: undefined;
+
+			if (rawText) {
+				try {
+					const cleaned = stripJsonCodeFence(rawText);
+
+					const parsed = JSON.parse(cleaned);
+
+					const normalized = Array.isArray(parsed) ? { items: parsed } : parsed;
+
+					const recovered = analysisSchema.parse(normalized);
+
+					console.warn(
+						"[RegulatoryAnalyzer] recovered structured output from fenced JSON",
+					);
+
+					return this.mergeWithSource(items, recovered);
+				} catch (recoveryError) {
+					console.error(
+						"[RegulatoryAnalyzer] recovery parse failed",
+						recoveryError,
+					);
+				}
+			}
 		}
 	}
 

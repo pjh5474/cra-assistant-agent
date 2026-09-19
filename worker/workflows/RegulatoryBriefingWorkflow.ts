@@ -32,11 +32,8 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 		await step.mergeAgentState({
 			regulatoryWorkflow: {
 				...createInitialWorkflowState(),
-
 				stage: "initializing",
-
 				progress: 0,
-
 				startedAt,
 			},
 		});
@@ -68,11 +65,8 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 
 					sourceProcessing: {
 						status: "running",
-
 						message: "Processing regulatory sources",
-
 						progress: 0,
-
 						startedAt: new Date().toISOString(),
 					},
 				},
@@ -101,6 +95,7 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 						try {
 							return await this.agent.collectMFDSForWorkflow({
 								since: params.since,
+								until: params.until,
 								includeIrrelevant: false,
 							});
 						} catch (error) {
@@ -193,10 +188,60 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			});
 		}
 
-		/*
-		 * 향후:
-		 * const konectResult = ...
-		 */
+		// -----------------------------------------------------
+		// KoNECT
+		// -----------------------------------------------------
+
+		const konectResult = params.sources.includes("KONECT")
+			? await step.do(
+					"process-konect",
+					{
+						retries: {
+							limit: 1,
+							delay: 1000,
+							backoff: "exponential",
+						},
+					},
+					async () =>
+						this.agent.collectKoNECTForWorkflow({
+							since: params.since,
+							until: params.until,
+							includeCourses: true,
+							onlyOpenCourses: true,
+							includeNoticeTypes: ["general", "education", "certification"],
+							includeIrrelevant: false,
+						}),
+				)
+			: undefined;
+
+		if (konectResult) {
+			await step.mergeAgentState({
+				regulatoryWorkflow: {
+					...this.agent.getState().regulatoryWorkflow,
+					stage: "sourceProcessing",
+					progress: 0.7,
+					sources: {
+						...this.agent.getState().regulatoryWorkflow.sources,
+						konect: {
+							source: "KONECT",
+							fetched: konectResult.totalFetched,
+							candidates: konectResult.candidateCount,
+							relevant: konectResult.relevantCount,
+							completedAt: new Date().toISOString(),
+							items: konectResult.items,
+							warnings: konectResult.warnings,
+						},
+					},
+				},
+			});
+
+			await this.reportProgress({
+				stage: "sourceProcessing",
+				step: "sourceProcessing",
+				percent: 0.7,
+				message: `KoNECT processing complete: ${konectResult.relevantCount} relevant item(s)`,
+			});
+		}
 
 		// -----------------------------------------------------
 		// Source processing complete
@@ -205,7 +250,7 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 		await step.mergeAgentState({
 			regulatoryWorkflow: {
 				...this.agent.getState().regulatoryWorkflow,
-				progress: 0.5,
+				progress: 0.75,
 				steps: {
 					...this.agent.getState().regulatoryWorkflow.steps,
 
@@ -226,14 +271,10 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 		await step.mergeAgentState({
 			regulatoryWorkflow: {
 				...this.agent.getState().regulatoryWorkflow,
-
 				stage: "synthesizing",
-
-				progress: 0.65,
-
+				progress: 0.8,
 				steps: {
 					...this.agent.getState().regulatoryWorkflow.steps,
-
 					synthesis: {
 						status: "running",
 						message: "Synthesizing regulatory findings",
@@ -247,7 +288,7 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 		await this.reportProgress({
 			stage: "synthesizing",
 			step: "synthesis",
-			percent: 0.55,
+			percent: 0.8,
 			message: "Synthesizing regulatory findings",
 		});
 
@@ -264,9 +305,9 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 					sources.push(ichResult);
 				}
 
-				// if (konectResult) {
-				// 	sources.push(konectResult);
-				// }
+				if (konectResult) {
+					sources.push(konectResult);
+				}
 
 				return {
 					sources,
@@ -277,19 +318,14 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 		await step.mergeAgentState({
 			regulatoryWorkflow: {
 				...this.agent.getState().regulatoryWorkflow,
-
-				progress: 0.65,
-
+				progress: 1,
 				steps: {
 					...this.agent.getState().regulatoryWorkflow.steps,
 
 					synthesis: {
 						status: "completed",
-
 						message: "Regulatory findings synthesized",
-
 						progress: 1,
-
 						completedAt: new Date().toISOString(),
 					},
 				},
@@ -657,13 +693,12 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 
 		const result = {
 			briefing,
-
 			sources: {
 				mfds: mfdsResult,
+				ich: ichResult,
+				konect: konectResult,
 			},
-
 			startedAt,
-
 			completedAt,
 		};
 

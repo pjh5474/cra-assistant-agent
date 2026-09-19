@@ -62,17 +62,13 @@ export function parseKoNECTCourses(
 
 			if (text.startsWith("신청기간")) {
 				const range = extractDateRange(text);
-
 				applicationStart = range?.start;
-
 				applicationEnd = range?.end;
 			}
 
 			if (text.startsWith("교육기간")) {
 				const range = extractDateRange(text);
-
 				courseStart = range?.start;
-
 				courseEnd = range?.end;
 			}
 

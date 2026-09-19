@@ -66,6 +66,7 @@ export interface KoNECTWorkflowInput {
 	since?: string;
 	until?: string;
 	includeCourses?: boolean;
+	onlyOpenCourses?: boolean;
 	includeNoticeTypes?: KoNECTNoticeType[];
 	includeIrrelevant?: boolean;
 }

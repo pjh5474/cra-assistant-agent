@@ -2,19 +2,16 @@ import { useMemo, useState } from "react";
 import { useAgent, useAgentToolEvents } from "agents/react";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
 import { Activity } from "lucide-react";
-import { AgentRunTimeline } from "@/components/chat/AgentRunTimeline";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { AgentOverview } from "@/components/agents/AgentOverview";
 import { CurrentActivityCard } from "@/components/agents/CurrentActivityCard";
 import { SubagentSummary } from "@/components/agents/SubagentSummary";
 import { AppHeader } from "@/components/layout/AppHeader";
+import { WorkflowPanel } from "@/components/workflow/WorkflowPanel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isToolUIPart } from "ai";
-import { Button } from "./components/ui/button";
 import type { CraAssistantAgentState } from "@/types/agent";
-import { RegulatoryWorkflowProgress } from "./components/workflow/RegulatoryWorkflowProgress.tsx";
-import { RegulatoryBriefingPanel } from "./components/workflow/RegulatoryBriefingPanel.tsx";
-import { ScrollArea } from "./components/ui/scroll-area.tsx";
-import { activityFromRun } from "./lib/subagent.ts";
+import { activityFromRun, normalizeChatActivity } from "./lib/subagent.ts";
 
 export default function App() {
 	const agent = useAgent<any, CraAssistantAgentState>({
@@ -23,16 +20,19 @@ export default function App() {
 	});
 
 	const [input, setInput] = useState("");
+	const [wasStopped, setWasStopped] = useState(false);
 
 	const {
 		messages,
 		sendMessage,
 		status,
+		stop,
 		isStreaming,
 		isRecovering,
 		clearHistory,
 	} = useAgentChat({
 		agent,
+		cancelOnClientAbort: true,
 	});
 
 	const agentTools = useAgentToolEvents({
@@ -40,11 +40,6 @@ export default function App() {
 	});
 
 	const isBusy = isStreaming || isRecovering || status === "submitted";
-
-	const allRuns = useMemo(
-		() => agentTools.unboundRuns ?? [],
-		[agentTools.unboundRuns],
-	);
 
 	const boundRuns = useMemo(() => {
 		const runs = [];
@@ -86,14 +81,23 @@ export default function App() {
 			.find((run) => run.agentType === "KONECTRegulatoryAgent");
 	}, [allAgentRuns]);
 
-	const mfdsActivity =
-		activityFromRun(latestMFDSRun) ?? agent.state?.subagents?.mfds;
+	const mfdsActivity = normalizeChatActivity(
+		activityFromRun(latestMFDSRun) ?? agent.state?.subagents?.mfds,
+		isBusy,
+		wasStopped,
+	);
 
-	const ichActivity =
-		activityFromRun(latestICHRun) ?? agent.state?.subagents?.ich;
+	const ichActivity = normalizeChatActivity(
+		activityFromRun(latestICHRun) ?? agent.state?.subagents?.ich,
+		isBusy,
+		wasStopped,
+	);
 
-	const konectActivity =
-		activityFromRun(latestKONECTRun) ?? agent.state?.subagents?.konect;
+	const konectActivity = normalizeChatActivity(
+		activityFromRun(latestKONECTRun) ?? agent.state?.subagents?.konect,
+		isBusy,
+		wasStopped,
+	);
 
 	const latestRegulatoryRun = useMemo(() => {
 		return [...allAgentRuns]
@@ -110,6 +114,8 @@ export default function App() {
 	const currentActivity = activityFromRun(latestRegulatoryRun);
 
 	function handleSend(text: string) {
+		setWasStopped(false);
+
 		sendMessage({
 			text,
 		});
@@ -119,123 +125,92 @@ export default function App() {
 
 	const handleWorkflowStart = async () => {
 		await agent.stub.startRegulatoryBriefingWorkflow({
-			since: "2026-09-16T00:00:00+09:00",
-			until: "2026-09-17T00:00:00+09:00",
-			sources: ["MFDS", "ICH"],
+			since: "2026-09-18T00:00:00+09:00",
+
+			until: "2026-09-19T23:59:59+09:00",
+
+			sources: ["MFDS", "ICH", "KONECT"],
+
 			purpose: "weekly-briefing",
 		});
 	};
 
-	const handleTestICHImplementation = async () => {
-		const result = await agent.stub.testICHImplementation();
+	const handleStop = () => {
+		console.log("[App] stopping current agent turn");
 
-		console.log(result);
-		const efficacyResult = await agent.stub.testICHEfficacyPage();
-
-		console.log(efficacyResult);
-	};
-
-	const handleTestKoNECTCollector = async () => {
-		const result = await agent.stub.testKoNECTCollector();
-
-		console.log(result);
+		setWasStopped(true);
+		stop();
 	};
 
 	const workflow = agent.state?.regulatoryWorkflow;
-	const briefing = workflow?.briefing;
+
 	return (
 		<div className="min-h-screen bg-background text-foreground">
 			<AppHeader
 				isBusy={isBusy}
 				isRecovering={isRecovering}
 				clearHistory={clearHistory}
+				isStreaming={isStreaming}
+				handleStop={handleStop}
 			/>
 
 			<main className="mx-auto grid max-w-7xl gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-				<div className="min-w-0 space-y-6">
-					<section>
-						<div className="mb-3 flex items-center gap-2">
-							<Activity className="h-4 w-4" />
+				<Tabs defaultValue="chat" className="min-w-0 w-full">
+					<TabsList>
+						<TabsTrigger value="chat">Chat</TabsTrigger>
+						<TabsTrigger value="workflow">Regulatory Workflow</TabsTrigger>
+					</TabsList>
 
-							<h2 className="text-sm font-medium">Regulatory Agents</h2>
-						</div>
+					<TabsContent value="chat" className="space-y-6">
+						<section>
+							<div className="mb-3 flex items-center gap-2">
+								<Activity className="h-4 w-4" />
+								<h2 className="text-sm font-medium">
+									Current Regulatory Agent Activity
+								</h2>
+							</div>
 
-						<div className="grid gap-3 md:grid-cols-3">
-							<SubagentSummary
-								name="MFDS"
-								description="MFDS regulatory notices and guidance"
-								state={mfdsActivity}
-							/>
+							<div className="grid gap-3 md:grid-cols-3">
+								<SubagentSummary
+									name="MFDS"
+									description="MFDS regulatory notices and guidance"
+									state={mfdsActivity}
+								/>
 
-							<SubagentSummary
-								name="ICH"
-								description="ICH guideline monitoring"
-								state={ichActivity}
-							/>
+								<SubagentSummary
+									name="ICH"
+									description="ICH guideline monitoring"
+									state={ichActivity}
+								/>
 
-							<SubagentSummary
-								name="KoNECT"
-								description="Clinical trial ecosystem updates"
-								state={konectActivity}
-							/>
-						</div>
-					</section>
+								<SubagentSummary
+									name="KoNECT"
+									description="Clinical trial ecosystem updates"
+									state={konectActivity}
+								/>
+							</div>
+						</section>
 
-					{workflow?.stage === "completed" && briefing && (
-						<RegulatoryBriefingPanel briefing={briefing} />
-					)}
+						<ChatPanel
+							messages={messages}
+							input={input}
+							onInputChange={setInput}
+							onSend={handleSend}
+							onStop={handleStop}
+							isBusy={isBusy}
+							isRecovering={isRecovering}
+							getRunsForToolCall={agentTools.getRunsForToolCall}
+						/>
+					</TabsContent>
 
-					<ChatPanel
-						messages={messages}
-						input={input}
-						onInputChange={setInput}
-						onSend={handleSend}
-						isBusy={isBusy}
-						isRecovering={isRecovering}
-						getRunsForToolCall={agentTools.getRunsForToolCall}
-					/>
-				</div>
+					<TabsContent value="workflow" keepMounted>
+						<WorkflowPanel workflow={workflow} onRun={handleWorkflowStart} />
+					</TabsContent>
+				</Tabs>
 
 				<aside className="space-y-4">
 					<AgentOverview />
-
 					<CurrentActivityCard activity={currentActivity} />
-
-					<ScrollArea className="h-screen">
-						<div className="space-y-4 p-4">
-							<Button onClick={handleWorkflowStart} className="w-full">
-								Start Workflow
-							</Button>
-
-							<Button onClick={handleTestICHImplementation} className="w-full">
-								Test ICH Implementation
-							</Button>
-
-							<Button onClick={handleTestKoNECTCollector} className="w-full">
-								Test KoNECT Collector
-							</Button>
-
-							<RegulatoryWorkflowProgress workflow={workflow} />
-
-							<AgentRunTimeline runs={allRuns} variant="panel" />
-						</div>
-					</ScrollArea>
-
-					{/* <Card>
-						<CardHeader className="pb-3">
-							<CardTitle className="text-base">Workspace</CardTitle>
-						</CardHeader>
-
-						<CardContent className="space-y-2">
-							<div className="flex items-center justify-between text-sm">
-								<span className="text-muted-foreground">Files</span>
-
-								<span className="font-medium">
-									{agent.state?.files?.length ?? 0}
-								</span>
-							</div>
-						</CardContent>
-					</Card> */}
 				</aside>
 			</main>
 		</div>

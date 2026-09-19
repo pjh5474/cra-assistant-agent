@@ -10,7 +10,14 @@ const inputSchema = z.object({
 		.string()
 		.optional()
 		.describe(
-			"Start date or ISO 8601 datetime. Examples: 2026-09-10 or 2026-09-10T00:00:00+09:00",
+			"Start of the requested date range. Preserve this filter across retries unless the user explicitly asks for a broader range.",
+		),
+
+	until: z
+		.string()
+		.optional()
+		.describe(
+			"End of the requested date range. Preserve this filter across retries unless the user explicitly asks for a broader range.",
 		),
 
 	feedTypes: z.array(z.enum(MFDS_FEEDS.map((feed) => feed.type))).optional(),
@@ -42,6 +49,12 @@ export function createMFDSCollectTool(
 		description: `
   Collect newly published regulatory information
   from official MFDS RSS feeds.
+
+  A successful response containing zero items is valid and means
+  that no matching MFDS items were found for that period.
+
+  Do not broaden or remove date filters merely because the result is empty.
+
       `.trim(),
 
 		inputSchema,
@@ -57,6 +70,7 @@ export function createMFDSCollectTool(
 				});
 
 				const since = input.since ? new Date(input.since) : undefined;
+				const until = input.until ? new Date(input.until) : undefined;
 
 				if (since && Number.isNaN(since.getTime())) {
 					throw new Error(`Invalid since date: ${input.since}`);
@@ -64,6 +78,7 @@ export function createMFDSCollectTool(
 
 				const result = await collector.collect({
 					since,
+					until,
 					feedTypes: input.feedTypes,
 					maxDescriptionLength: input.maxDescriptionLength,
 				});
@@ -86,6 +101,31 @@ export function createMFDSCollectTool(
 
 				throw error;
 			}
+		},
+	});
+}
+
+export function getTodayDate() {
+	return tool({
+		description:
+			"Get the current date in Korea (Asia/Seoul). Use this before interpreting relative dates such as today, yesterday, or this week.",
+
+		inputSchema: z.object({}),
+
+		execute: async () => {
+			const formatter = new Intl.DateTimeFormat("en-CA", {
+				timeZone: "Asia/Seoul",
+
+				year: "numeric",
+				month: "2-digit",
+				day: "2-digit",
+			});
+
+			return {
+				date: formatter.format(new Date()),
+
+				timezone: "Asia/Seoul",
+			};
 		},
 	});
 }

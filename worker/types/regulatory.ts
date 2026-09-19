@@ -5,7 +5,8 @@ export type RegulatorySourceType =
 	| "notice"
 	| "guidance"
 	| "safety"
-	| "guideline";
+	| "guideline"
+	| "education";
 
 export interface RegulatoryItem {
 	id: string;

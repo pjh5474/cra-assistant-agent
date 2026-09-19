@@ -32,6 +32,7 @@ export interface MFDSCollectOptions {
 	 * 해당 시각 이후 게시물만 반환.
 	 */
 	since?: Date;
+	until?: Date;
 
 	/**
 	 * 조회할 특정 MFDS feed.
@@ -86,6 +87,7 @@ export class MFDSCollector {
 	): Promise<MFDSCollectionResult> {
 		const {
 			since,
+			until,
 			feedTypes,
 			timeoutMs = 10_000,
 			maxDescriptionLength = 1_500,
@@ -99,6 +101,7 @@ export class MFDSCollector {
 			feeds.map((feed) =>
 				this.collectFeed(feed, {
 					since,
+					until,
 					timeoutMs,
 					maxDescriptionLength,
 				}),
@@ -159,6 +162,7 @@ export class MFDSCollector {
 		feed: MFDSFeed,
 		options: {
 			since?: Date;
+			until?: Date;
 			timeoutMs: number;
 			maxDescriptionLength: number;
 		},
@@ -181,6 +185,16 @@ export class MFDSCollector {
 
 		const collectedAt = new Date().toISOString();
 
+		const validSince =
+			options.since && !Number.isNaN(options.since.getTime())
+				? options.since
+				: undefined;
+
+		const validUntil =
+			options.until && !Number.isNaN(options.until.getTime())
+				? options.until
+				: undefined;
+
 		const normalized = items
 			.map((item) =>
 				this.normalizeItem(
@@ -191,7 +205,9 @@ export class MFDSCollector {
 				),
 			)
 			.filter((item): item is RegulatoryItem => item !== null)
-			.filter((item) => this.isAfterSince(item.publishedAt, options.since));
+			.filter((item) =>
+				this.isWithinRange(item.publishedAt, validSince, validUntil),
+			);
 
 		return {
 			feed,
@@ -344,15 +360,11 @@ export class MFDSCollector {
 		return date.toISOString();
 	}
 
-	private isAfterSince(
+	private isWithinRange(
 		publishedAt: string | undefined,
-
 		since?: Date,
+		until?: Date,
 	): boolean {
-		if (!since) {
-			return true;
-		}
-
 		/**
 		 * publishedAt을 파싱하지 못했다고 해서
 		 * 후보 자체를 제거하지 않습니다.
@@ -363,7 +375,23 @@ export class MFDSCollector {
 			return true;
 		}
 
-		return new Date(publishedAt).getTime() >= since.getTime();
+		const date = new Date(publishedAt);
+
+		if (Number.isNaN(date.getTime())) {
+			return true;
+		}
+
+		const time = date.getTime();
+
+		if (since && time < since.getTime()) {
+			return false;
+		}
+
+		if (until && time > until.getTime()) {
+			return false;
+		}
+
+		return true;
 	}
 
 	private deduplicate(items: RegulatoryItem[]): RegulatoryItem[] {

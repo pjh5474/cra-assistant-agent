@@ -1,16 +1,21 @@
 import { ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "../ui/button";
 
 interface AppHeaderProps {
 	isBusy: boolean;
 	isRecovering: boolean;
 	clearHistory: () => void;
+	handleStop: () => void;
+	isStreaming: boolean;
 }
 
 export function AppHeader({
 	isBusy,
 	isRecovering,
 	clearHistory,
+	handleStop,
+	isStreaming,
 }: AppHeaderProps) {
 	return (
 		<header className="border-b bg-background/95 backdrop-blur">
@@ -35,12 +40,18 @@ export function AppHeader({
 					{isRecovering ? "Recovering" : isBusy ? "Working" : "Ready"}
 				</Badge>
 
-				<button
+				<Button
 					onClick={clearHistory}
 					className="shrink-0 rounded-md px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
 				>
 					Clear
-				</button>
+				</Button>
+
+				{isStreaming && (
+					<Button type="button" variant="destructive" onClick={handleStop}>
+						Stop
+					</Button>
+				)}
 			</div>
 		</header>
 	);

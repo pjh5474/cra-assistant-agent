@@ -30,22 +30,17 @@ export interface WorkflowStepState {
 
 export interface SourceProcessingResult {
 	source: "MFDS" | "ICH" | "KONECT";
-
 	fetched: number;
 	candidates: number;
 	relevant: number;
-
 	completedAt: string;
-
 	items: {
 		id: string;
 		title: string;
 		url: string;
 		publishedAt?: string;
-
 		categories: string[];
 		priority: "high" | "medium" | "low";
-
 		summary: string;
 		craImpact: string;
 		interviewPoint?: string;
@@ -56,29 +51,19 @@ export interface SourceProcessingResult {
 
 export interface RegulatoryBriefing {
 	title: string;
-
 	period: {
 		since: string;
 		until?: string;
 	};
-
 	generatedAt: string;
-
 	summary: string;
-
 	stats: {
 		sourcesProcessed: number;
-
 		totalFetched: number;
-
 		totalCandidates: number;
-
 		totalRelevant: number;
-
 		highPriority: number;
-
 		mediumPriority: number;
-
 		lowPriority: number;
 	};
 
@@ -91,25 +76,15 @@ export interface RegulatoryBriefing {
 
 	highlights: {
 		id: string;
-
 		title: string;
-
 		source: string;
-
 		priority: "high" | "medium" | "low";
-
 		categories: string[];
-
 		summary: string;
-
 		craImpact: string;
-
 		interviewPoint?: string;
-
 		url: string;
-
 		publishedAt?: string;
-
 		relevanceScore: number;
 	}[];
 }
@@ -175,6 +150,7 @@ export interface StartRegulatoryBriefingInput {
 
 export interface MFDSWorkflowInput {
 	since: string;
+	until?: string;
 	includeIrrelevant?: boolean;
 }
 

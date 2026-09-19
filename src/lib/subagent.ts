@@ -108,3 +108,30 @@ export function activityFromRun(
 		updatedAt: new Date().toISOString(),
 	};
 }
+
+export function normalizeChatActivity<
+	T extends {
+		status?: string;
+		progress?: number;
+		message?: string;
+	},
+>(
+	activity: T | undefined,
+	isBusy: boolean,
+	wasStopped: boolean,
+): T | undefined {
+	if (!activity) {
+		return undefined;
+	}
+
+	if (!isBusy && activity.status === "running") {
+		return {
+			...activity,
+			status: wasStopped ? "aborted" : "idle",
+
+			message: wasStopped ? "Aborted by user" : undefined,
+		};
+	}
+
+	return activity;
+}

@@ -1,7 +1,10 @@
 import { Think } from "@cloudflare/think";
 import type { LanguageModel, ToolSet } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
-import { createMFDSCollectTool } from "../tools/collect/MFDSCollectTool.ts";
+import {
+	createMFDSCollectTool,
+	getTodayDate,
+} from "../tools/collect/MFDSCollectTool.ts";
 import { createRegulatoryAnalyzeTool } from "../tools/analyze/RegulatoryAnalyzeTool.ts";
 import type { MFDSWorkflowInput } from "../types/workflow.ts";
 import { MFDSCollector } from "../source-collectors/MFDSCollector.ts";
@@ -24,7 +27,30 @@ export class MFDSRegulatoryAgent extends Think<Env> {
 		return `
   You are the specialized MFDS Regulatory Agent
   for a CRA Assistant system.
+
+  Date handling rules:
+
+- The user may use relative Korean date expressions such as
+  "오늘", "어제", "이번 주", or "최근".
+- Resolve relative dates using the current date in Asia/Seoul.
+- For "오늘", query only the current Korean calendar day.
+- For "어제", query only the previous Korean calendar day.
+- Do not guess dates from training data.
+- Do not reuse dates from examples or previous conversations.
+- If the current date is needed, use the current-date tool before
+  calling regulatory collection tools.
   
+
+  Collection behavior rules:
+
+- A successful collection returning zero candidate items is a valid result.
+- Zero items does NOT mean the collection failed.
+- Do not automatically retry the MFDS collection with broader or missing date filters merely because zero items were returned.
+- Preserve the user's requested date range.
+- If the requested period returns zero items, report that no matching MFDS items were found for that period.
+- Only retry collection when the tool reports an actual technical failure, such as a fetch error or source failure.
+
+
   Workflow:
   
   1. Call collect_mfds_updates.
@@ -81,14 +107,17 @@ export class MFDSRegulatoryAgent extends Think<Env> {
 					await report(progress);
 				},
 			}),
+
+			get_today_date: getTodayDate(),
 		};
 	}
 
-	private async collectForWorkflow(since?: Date) {
+	private async collectForWorkflow(since?: Date, until?: Date) {
 		const collector = new MFDSCollector();
 
 		return collector.collect({
 			since,
+			until,
 			maxDescriptionLength: 3000,
 		});
 	}
@@ -111,12 +140,17 @@ export class MFDSRegulatoryAgent extends Think<Env> {
 		console.log("[MFDSRegulatoryAgent] workflow RPC start", input);
 
 		const since = input.since ? new Date(input.since) : undefined;
+		const until = input.until ? new Date(input.until) : undefined;
 
 		if (since && Number.isNaN(since.getTime())) {
 			throw new Error(`Invalid since date: ${input.since}`);
 		}
 
-		const collection = await this.collectForWorkflow(since);
+		if (until && Number.isNaN(until.getTime())) {
+			throw new Error(`Invalid until date: ${input.until}`);
+		}
+
+		const collection = await this.collectForWorkflow(since, until);
 
 		const analysis = await this.analyzeForWorkflow(
 			collection.items,

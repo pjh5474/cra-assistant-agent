@@ -13,6 +13,7 @@ interface ChatPanelProps {
 	input: string;
 	onInputChange: (value: string) => void;
 	onSend: (text: string) => void;
+	onStop?: () => void;
 	isBusy: boolean;
 	isRecovering: boolean;
 	getRunsForToolCall: (toolCallId: string) => AgentToolRunState[];
@@ -23,21 +24,22 @@ export function ChatPanel({
 	input,
 	onInputChange,
 	onSend,
+	onStop,
 	isBusy,
 	isRecovering,
 	getRunsForToolCall,
 }: ChatPanelProps) {
 	return (
-		<Card className="overflow-hidden">
-			<CardHeader className="border-b py-4">
+		<Card className="flex h-[min(36rem,calc(100vh-22rem))] flex-col overflow-hidden">
+			<CardHeader className="shrink-0 border-b py-4">
 				<CardTitle className="flex items-center gap-2 text-base">
 					<Bot className="h-4 w-4" />
 					CRA Regulatory Assistant
 				</CardTitle>
 			</CardHeader>
 
-			<CardContent className="p-0">
-				<ScrollArea className="h-150">
+			<CardContent className="flex min-h-0 flex-1 flex-col p-0">
+				<ScrollArea className="min-h-0 flex-1">
 					<div className="space-y-5 p-5">
 						{messages.length === 0 ? (
 							<ChatEmptyState onSelectPrompt={onInputChange} />
@@ -69,6 +71,7 @@ export function ChatPanel({
 					value={input}
 					onChange={onInputChange}
 					onSend={onSend}
+					onStop={onStop}
 					isBusy={isBusy}
 				/>
 			</CardContent>

@@ -12,13 +12,26 @@ interface RegulatoryWorkflowProgressProps {
 }
 
 const STEP_LABELS = {
-	collection: "Data Collection",
-	analysis: "CRA Analysis",
+	sourceProcessing: "Source Processing",
+	synthesis: "Briefing Synthesis",
 	enrichment: "RAG Enrichment",
 	approval: "Approval",
 	reporting: "Briefing Generation",
 	email: "Email Delivery",
 } as const;
+
+const STAGE_LABELS: Record<string, string> = {
+	idle: "Idle",
+	initializing: "Initializing",
+	sourceProcessing: "Source Processing",
+	synthesizing: "Synthesizing",
+	enriching: "Enriching",
+	awaitingApproval: "Awaiting Approval",
+	reporting: "Reporting",
+	emailing: "Emailing",
+	completed: "Completed",
+	error: "Error",
+};
 
 function StepIcon({ step }: { step: WorkflowStepState }) {
 	switch (step.status) {
@@ -44,16 +57,17 @@ export function RegulatoryWorkflowProgress({
 	return (
 		<Card>
 			<CardHeader className="pb-3">
-				<div className="flex items-center justify-between gap-3">
-					<CardTitle className="text-base">
-						Regulatory Briefing Workflow
-					</CardTitle>
-
-					<Badge variant="outline">{workflow?.stage}</Badge>
-				</div>
+				<CardTitle className="text-base">Workflow Status</CardTitle>
 			</CardHeader>
 
 			<CardContent className="space-y-5">
+				<div className="flex items-center justify-between gap-3">
+					<span className="text-xs text-muted-foreground">Current Stage</span>
+					<Badge variant="outline">
+						{STAGE_LABELS[workflow?.stage ?? "idle"] ?? workflow?.stage ?? "Idle"}
+					</Badge>
+				</div>
+
 				<div className="space-y-2">
 					<div className="flex justify-between text-xs text-muted-foreground">
 						<span>Overall Progress</span>
@@ -64,40 +78,58 @@ export function RegulatoryWorkflowProgress({
 					<Progress value={percent} />
 				</div>
 
-				<div className="space-y-3">
-					{Object.entries(workflow?.steps ?? {}).map(([key, step]) => (
-						<div key={key} className="flex gap-3 rounded-md border p-3">
-							<div className="mt-0.5">
-								<StepIcon step={step} />
-							</div>
+				<div className="space-y-2">
+					<span className="text-xs text-muted-foreground">Timeline</span>
 
-							<div className="min-w-0 flex-1">
-								<div className="flex items-center justify-between gap-3">
-									<span className="text-sm font-medium">
-										{STEP_LABELS[key as keyof typeof STEP_LABELS]}
-									</span>
+					<div className="space-y-3">
+						{(Object.keys(STEP_LABELS) as Array<keyof typeof STEP_LABELS>).map(
+							(key) => {
+								const step = workflow?.steps?.[key] ?? {
+									status:
+										workflow?.stage === "completed" ? "completed" : "pending",
+								};
 
-									<Badge variant="secondary" className="text-[10px]">
-										{step.status}
-									</Badge>
-								</div>
+								return (
+									<div key={key} className="flex gap-3 rounded-md border p-3">
+										<div className="mt-0.5">
+											<StepIcon step={step} />
+										</div>
 
-								{step.message && (
-									<p className="mt-1 text-xs text-muted-foreground">
-										{step.message}
-									</p>
-								)}
+										<div className="min-w-0 flex-1">
+											<div className="flex items-center justify-between gap-3">
+												<span className="text-sm font-medium">
+													{STEP_LABELS[key]}
+												</span>
 
-								{typeof step.progress === "number" && (
-									<Progress className="mt-2" value={step.progress * 100} />
-								)}
+												<Badge variant="secondary" className="text-[10px]">
+													{step.status}
+												</Badge>
+											</div>
 
-								{step.error && (
-									<p className="mt-2 text-xs text-destructive">{step.error}</p>
-								)}
-							</div>
-						</div>
-					))}
+											{step.message && (
+												<p className="mt-1 text-xs text-muted-foreground">
+													{step.message}
+												</p>
+											)}
+
+											{typeof step.progress === "number" && (
+												<Progress
+													className="mt-2"
+													value={step.progress * 100}
+												/>
+											)}
+
+											{step.error && (
+												<p className="mt-2 text-xs text-destructive">
+													{step.error}
+												</p>
+											)}
+										</div>
+									</div>
+								);
+							},
+						)}
+					</div>
 				</div>
 			</CardContent>
 		</Card>
