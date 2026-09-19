@@ -38,6 +38,7 @@ export type RegulatoryPriority = "high" | "medium" | "low";
 export interface AnalyzedRegulatoryItem {
 	id: string;
 	source: RegulatorySource;
+	sourceId: string;
 	title: string;
 	url: string;
 	publishedAt?: string;

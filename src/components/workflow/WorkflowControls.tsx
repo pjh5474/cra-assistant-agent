@@ -12,8 +12,22 @@ const SOURCES = [
 
 type Source = (typeof SOURCES)[number]["value"];
 
+interface WorkflowRunParams {
+	since: string;
+	until?: string;
+	sources: Source[];
+
+	includeRag: boolean;
+	requireApproval: boolean;
+	sendEmail: boolean;
+}
+
 interface WorkflowControlsProps {
-	onRun: () => void;
+	onRun: (params: WorkflowRunParams) => void | Promise<void>;
+}
+
+function toIsoString(value: string): string {
+	return new Date(value).toISOString();
 }
 
 export function WorkflowControls({ onRun }: WorkflowControlsProps) {
@@ -23,6 +37,28 @@ export function WorkflowControls({ onRun }: WorkflowControlsProps) {
 	const [includeRag, setIncludeRag] = useState(false);
 	const [requireApproval, setRequireApproval] = useState(false);
 	const [sendEmail, setSendEmail] = useState(false);
+
+	function handleRun() {
+		console.log("[WorkflowControls] raw values", {
+			since,
+			until,
+			convertedSince: new Date(since).toISOString(),
+			convertedUntil: until ? new Date(until).toISOString() : undefined,
+		});
+
+		if (!since || sources.length === 0) {
+			return;
+		}
+
+		return onRun({
+			since: toIsoString(since),
+			until: until ? toIsoString(until) : undefined,
+			sources,
+			includeRag,
+			requireApproval,
+			sendEmail,
+		});
+	}
 
 	function toggleSource(source: Source) {
 		setSources((current) =>
@@ -112,7 +148,12 @@ export function WorkflowControls({ onRun }: WorkflowControlsProps) {
 					</label>
 				</div>
 
-				<Button type="button" onClick={onRun} className="w-full sm:w-auto">
+				<Button
+					type="button"
+					onClick={handleRun}
+					disabled={sources.length === 0}
+					className="w-full sm:w-auto"
+				>
 					<Play className="h-4 w-4" />
 					Run Workflow
 				</Button>

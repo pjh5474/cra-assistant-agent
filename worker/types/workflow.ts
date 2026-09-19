@@ -1,3 +1,4 @@
+import type { BriefingCandidate } from "./regulatory-briefing.ts";
 import type { AnalyzedRegulatoryItem } from "./regulatory.ts";
 
 export type RegulatoryWorkflowStage =
@@ -62,6 +63,8 @@ export interface RegulatoryBriefing {
 		totalFetched: number;
 		totalCandidates: number;
 		totalRelevant: number;
+		mainItems: number;
+		referenceItems: number;
 		highPriority: number;
 		mediumPriority: number;
 		lowPriority: number;
@@ -83,9 +86,22 @@ export interface RegulatoryBriefing {
 		summary: string;
 		craImpact: string;
 		interviewPoint?: string;
-		url: string;
+		url?: string;
 		publishedAt?: string;
 		relevanceScore: number;
+	}[];
+
+	references: {
+		id: string;
+		title: string;
+		source: string;
+		priority: "high" | "medium" | "low";
+		categories: string[];
+		summary: string;
+		url?: string;
+		publishedAt?: string;
+		changeStatus: "new" | "changed" | "unchanged";
+		fromCache: boolean;
 	}[];
 }
 
@@ -162,4 +178,15 @@ export interface SourceWorkflowResult {
 	relevantCount: number;
 	items: AnalyzedRegulatoryItem[];
 	warnings: string[];
+	manifest: {
+		newCount: number;
+		changedCount: number;
+		unchangedCount: number;
+	};
+	analysisCache: {
+		analyzedCount: number;
+		reusedCount: number;
+		reusedRelevantCount: number;
+	};
+	briefingCandidates?: BriefingCandidate[];
 }

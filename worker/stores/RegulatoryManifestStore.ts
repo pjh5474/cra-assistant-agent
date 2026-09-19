@@ -154,20 +154,4 @@ export class RegulatoryManifestStore {
 			current,
 		};
 	}
-
-	private rowToRecord(row: RegulatoryManifestRow): RegulatoryManifestRecord {
-		return {
-			source: row.source,
-			sourceId: row.sourceId,
-			title: row.title,
-			url: row.url ?? undefined,
-			publishedAt: row.publishedAt ?? undefined,
-			contentHash: row.contentHash,
-			firstSeenAt: row.firstSeenAt,
-			lastSeenAt: row.lastSeenAt,
-			lastChangedAt: row.lastChangedAt,
-			changeStatus: row.changeStatus,
-			storageKey: row.storageKey ?? undefined,
-		};
-	}
 }

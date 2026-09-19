@@ -3,12 +3,17 @@ import type {
 	SourceProcessingResult,
 	SourceWorkflowResult,
 } from "../types/workflow.ts";
-import type { AnalyzedRegulatoryItem } from "../types/regulatory.ts";
+import type { BriefingCandidate } from "../types/regulatory-briefing.ts";
 
 export interface BuildRegulatoryBriefingInput {
 	since: string;
 	until?: string;
+
 	sources: SourceWorkflowResult[];
+
+	mainItems: BriefingCandidate[];
+
+	referenceItems: BriefingCandidate[];
 }
 
 const PRIORITY_WEIGHT: Record<"high" | "medium" | "low", number> = {
@@ -20,13 +25,13 @@ const PRIORITY_WEIGHT: Record<"high" | "medium" | "low", number> = {
 export function buildRegulatoryBriefing(
 	input: BuildRegulatoryBriefingInput,
 ): RegulatoryBriefing {
-	const { since, until, sources } = input;
+	const { since, until, sources, mainItems, referenceItems } = input;
 
-	const sourceItems = sources.flatMap((source) => source.items);
+	// const sourceItems = sources.flatMap((source) => source.items);
 
-	const relevantItems = sourceItems.filter((item) => item.relevant);
+	// const relevantItems = sourceItems.filter((item) => item.relevant);
 
-	const highlights = [...relevantItems]
+	const highlights = [...mainItems]
 		.sort((a, b) => {
 			const priorityDiff =
 				PRIORITY_WEIGHT[b.priority] - PRIORITY_WEIGHT[a.priority];
@@ -48,84 +53,90 @@ export function buildRegulatoryBriefing(
 			return bDate - aDate;
 		})
 		.map((item) => ({
-			id: item.id,
-
+			id: `${item.source}:${item.sourceId}`,
 			title: item.title,
-
 			source: item.source,
-
 			priority: item.priority,
-
 			categories: item.categories,
-
 			summary: item.summary,
-
 			craImpact: item.craImpact,
-
 			interviewPoint: item.interviewPoint,
-
 			url: item.url,
-
 			publishedAt: item.publishedAt,
-
 			relevanceScore: item.relevanceScore,
 		}));
 
+	const references = [...referenceItems]
+		.sort((a, b) => {
+			const priorityDiff =
+				PRIORITY_WEIGHT[b.priority] - PRIORITY_WEIGHT[a.priority];
+
+			if (priorityDiff !== 0) {
+				return priorityDiff;
+			}
+
+			return b.relevanceScore - a.relevanceScore;
+		})
+		.map((item) => ({
+			id: `${item.source}:${item.sourceId}`,
+			title: item.title,
+			source: item.source,
+			priority: item.priority,
+			categories: item.categories,
+			summary: item.summary,
+			url: item.url,
+			publishedAt: item.publishedAt,
+			changeStatus: item.changeStatus,
+			fromCache: item.fromCache,
+		}));
+
+	const allVisibleItems = [...mainItems, ...referenceItems];
+
 	const sourceSummary = buildSourceSummary(sources);
 
-	const categorySummary = buildCategorySummary(relevantItems);
+	const categorySummary = buildCategorySummary(allVisibleItems);
 
-	const prioritySummary = buildPrioritySummary(relevantItems);
+	const prioritySummary = buildPrioritySummary(allVisibleItems);
 
 	const summary = buildSummaryText({
-		relevantCount: highlights.length,
+		mainCount: highlights.length,
+
+		referenceCount: references.length,
 
 		sourceSummary,
-
 		categorySummary,
-
 		prioritySummary,
 	});
 
 	return {
 		title: "Weekly CRA Regulatory Briefing",
-
 		period: {
 			since,
 			until,
 		},
-
 		generatedAt: new Date().toISOString(),
-
 		summary,
-
 		stats: {
 			sourcesProcessed: sourceSummary.length,
-
 			totalFetched: sourceSummary.reduce(
 				(total, source) => total + source.fetched,
 				0,
 			),
-
 			totalCandidates: sourceSummary.reduce(
 				(total, source) => total + source.candidates,
 				0,
 			),
-
-			totalRelevant: highlights.length,
-
+			totalRelevant: mainItems.length + referenceItems.length,
+			mainItems: mainItems.length,
+			referenceItems: referenceItems.length,
 			highPriority: prioritySummary.high,
-
 			mediumPriority: prioritySummary.medium,
-
 			lowPriority: prioritySummary.low,
 		},
-
 		sources: sourceSummary,
-
 		categories: categorySummary,
-
 		highlights,
+		references,
 	};
 }
 
@@ -169,7 +180,7 @@ function buildSourceSummary(
 	}));
 }
 
-function buildCategorySummary(items: AnalyzedRegulatoryItem[]) {
+function buildCategorySummary(items: BriefingCandidate[]) {
 	const counts = new Map<string, number>();
 
 	for (const item of items) {
@@ -186,7 +197,7 @@ function buildCategorySummary(items: AnalyzedRegulatoryItem[]) {
 		.sort((a, b) => b.count - a.count);
 }
 
-function buildPrioritySummary(items: AnalyzedRegulatoryItem[]) {
+function buildPrioritySummary(items: BriefingCandidate[]) {
 	const summary = {
 		high: 0,
 		medium: 0,
@@ -201,7 +212,8 @@ function buildPrioritySummary(items: AnalyzedRegulatoryItem[]) {
 }
 
 function buildSummaryText(input: {
-	relevantCount: number;
+	mainCount: number;
+	referenceCount: number;
 
 	sourceSummary: SourceProcessingResult[];
 
@@ -216,11 +228,21 @@ function buildSummaryText(input: {
 		low: number;
 	};
 }): string {
-	const { relevantCount, sourceSummary, categorySummary, prioritySummary } =
-		input;
+	const {
+		mainCount,
+		referenceCount,
+		sourceSummary,
+		categorySummary,
+		prioritySummary,
+	} = input;
 
-	if (relevantCount === 0) {
-		return "No CRA-relevant regulatory updates were identified during the selected period.";
+	const totalVisible = mainCount + referenceCount;
+
+	if (totalVisible === 0) {
+		return (
+			"No CRA-relevant regulatory updates " +
+			"or active reference items were identified."
+		);
 	}
 
 	const sourceNames = sourceSummary.map((source) => source.source).join(", ");
@@ -243,8 +265,10 @@ function buildSummaryText(input: {
 		.join(", ");
 
 	const parts = [
-		`${relevantCount} CRA-relevant regulatory update${
-			relevantCount === 1 ? "" : "s"
+		`${mainCount} main briefing item${
+			mainCount === 1 ? "" : "s"
+		} and ${referenceCount} additional reference item${
+			referenceCount === 1 ? "" : "s"
 		} were identified from ${sourceNames}.`,
 	];
 

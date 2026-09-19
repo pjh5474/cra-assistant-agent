@@ -3,10 +3,11 @@ import { RegulatoryWorkflowProgress } from "./RegulatoryWorkflowProgress";
 import { WorkflowControls } from "./WorkflowControls";
 import { WorkflowSourceResults } from "./WorkflowSourceResults";
 import type { RegulatoryWorkflowState } from "../../../worker/types/workflow.ts";
+import type { WorkflowRunParams } from "@/types/workflows";
 
 interface WorkflowPanelProps {
 	workflow?: RegulatoryWorkflowState;
-	onRun: () => void;
+	onRun: (params: WorkflowRunParams) => void | Promise<void>;
 }
 
 export function WorkflowPanel({ workflow, onRun }: WorkflowPanelProps) {

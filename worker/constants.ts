@@ -154,9 +154,9 @@ export const ICH_GUIDELINE_FAMILIES = [
 	},
 ] as const;
 
-export const DEFAULT_ICH_MEMBER = "MFDS, Republic of Korea" as const;
+export const DEFAULT_ICH_MEMBER = "MFDS, Republic of Korea";
 
-export const DEFAULT_ICH_GUIDELINE_PREFIXES = ["E6"] as const;
+export const DEFAULT_ICH_GUIDELINE_PREFIXES = ["E6"];
 
 export type ICHMember = (typeof ICH_MEMBERS)[number]["value"];
 

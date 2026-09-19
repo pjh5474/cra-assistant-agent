@@ -1,4 +1,10 @@
-import { AlertTriangle, BookOpen, FileText, ShieldCheck } from "lucide-react";
+import {
+	AlertTriangle,
+	BookOpen,
+	ChevronDown,
+	FileText,
+	ShieldCheck,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,6 +13,11 @@ import { Separator } from "@/components/ui/separator";
 
 import type { RegulatoryBriefing } from "../../../worker/types/workflow.ts";
 import { formatTime } from "@/lib/subagent.ts";
+import {
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "../ui/collapsible.tsx";
 
 interface RegulatoryBriefingPanelProps {
 	briefing: RegulatoryBriefing;
@@ -62,13 +73,12 @@ export function RegulatoryBriefingPanel({
 			<CardContent className="space-y-6">
 				{/* Summary metrics */}
 
-				<div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+				<div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
 					<MetricCard label="Scanned" value={stats.totalFetched} />
-
 					<MetricCard label="Candidates" value={stats.totalCandidates} />
-
-					<MetricCard label="CRA Relevant" value={stats.totalRelevant} />
-
+					<MetricCard label="Relevant" value={stats.totalRelevant} />
+					<MetricCard label="Main" value={stats.mainItems} />
+					<MetricCard label="References" value={stats.referenceItems} />
 					<MetricCard label="Sources" value={stats.sourcesProcessed} />
 				</div>
 
@@ -223,11 +233,13 @@ export function RegulatoryBriefingPanel({
 												Relevance {Math.round(item.relevanceScore * 100)}%
 											</span>
 
-											<Button variant="outline" size="sm">
-												<a href={item.url} target="_blank" rel="noreferrer">
-													View Source
-												</a>
-											</Button>
+											{item.url && (
+												<Button variant="outline" size="sm">
+													<a href={item.url} target="_blank" rel="noreferrer">
+														View Source
+													</a>
+												</Button>
+											)}
 										</div>
 									</div>
 								</div>
@@ -235,6 +247,85 @@ export function RegulatoryBriefingPanel({
 						</div>
 					)}
 				</div>
+
+				<Separator />
+
+				{/* Additional References */}
+				<Collapsible defaultOpen={false}>
+					<div className="space-y-4">
+						<div className="flex items-center justify-between gap-3">
+							<CollapsibleTrigger className="group inline-flex h-auto items-center gap-2 rounded-md px-0 py-0 text-sm font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+								Additional References
+								<Badge variant="secondary">{briefing.references.length}</Badge>
+								<ChevronDown className="h-4 w-4 transition-transform group-data-[state=open]:rotate-180" />
+							</CollapsibleTrigger>
+
+							<span className="text-xs text-muted-foreground">
+								Supporting items
+							</span>
+						</div>
+
+						<CollapsibleContent>
+							{briefing.references.length === 0 ? (
+								<div className="rounded-lg border border-dashed p-4 text-center">
+									<p className="text-xs text-muted-foreground">
+										No additional reference items.
+									</p>
+								</div>
+							) : (
+								<div className="space-y-3">
+									{briefing.references.map((item) => (
+										<div key={item.id} className="rounded-lg border p-3">
+											<div className="flex flex-wrap items-start justify-between gap-3">
+												<div className="min-w-0 flex-1 space-y-2">
+													<div className="flex flex-wrap gap-2">
+														<Badge variant={getPriorityVariant(item.priority)}>
+															{item.priority.toUpperCase()}
+														</Badge>
+
+														<Badge variant="outline">{item.source}</Badge>
+
+														<Badge variant="secondary">
+															{item.changeStatus}
+														</Badge>
+
+														{item.fromCache && (
+															<Badge variant="outline">Cached</Badge>
+														)}
+													</div>
+
+													<div>
+														<h4 className="text-sm font-medium leading-snug">
+															{item.title}
+														</h4>
+
+														{item.publishedAt && (
+															<p className="mt-1 text-xs text-muted-foreground">
+																Published {formatTime(item.publishedAt)}
+															</p>
+														)}
+													</div>
+
+													<p className="text-sm leading-relaxed text-muted-foreground">
+														{item.summary}
+													</p>
+												</div>
+
+												{item.url && (
+													<Button variant="outline" size="sm">
+														<a href={item.url} target="_blank" rel="noreferrer">
+															View Source
+														</a>
+													</Button>
+												)}
+											</div>
+										</div>
+									))}
+								</div>
+							)}
+						</CollapsibleContent>
+					</div>
+				</Collapsible>
 
 				<div className="text-xs text-muted-foreground">
 					Generated {formatTime(briefing.generatedAt)}

@@ -15,6 +15,11 @@ import type {
 } from "../types/konect.ts";
 
 import type { RegulatoryItem } from "../types/regulatory.ts";
+import { RegulatoryManifestStore } from "../stores/RegulatoryManifestStore.ts";
+import { RegulatoryAnalysisStore } from "../stores/RegulatoryAnalysisStore.ts";
+import type { RegulatoryAnalysisRecord } from "../types/regulatory-analysis.ts";
+import { createRegulatoryContentHash } from "../helpers/regulatoryContentHash.ts";
+import type { BriefingCandidate } from "../types/regulatory-briefing.ts";
 
 const DEFAULT_NOTICE_TYPES: KoNECTNoticeType[] = [
 	"general",
@@ -67,6 +72,93 @@ const konectCollectInputSchema = z.object({
 type KoNECTCollectInput = z.infer<typeof konectCollectInputSchema>;
 
 export class KoNECTRegulatoryAgent extends Think<Env> {
+	onStart() {
+		void this.sql`
+			CREATE TABLE IF NOT EXISTS regulatory_manifest (
+				source TEXT NOT NULL,
+				source_id TEXT NOT NULL,
+		
+				title TEXT NOT NULL,
+				url TEXT,
+				published_at TEXT,
+		
+				content_hash TEXT NOT NULL,
+		
+				first_seen_at TEXT NOT NULL,
+				last_seen_at TEXT NOT NULL,
+				last_changed_at TEXT NOT NULL,
+		
+				change_status TEXT NOT NULL,
+		
+				storage_key TEXT,
+		
+				PRIMARY KEY (
+				source,
+				source_id
+				)
+			);
+			`;
+
+		void this.sql`
+			CREATE INDEX IF NOT EXISTS
+				idx_regulatory_manifest_last_seen
+			ON regulatory_manifest (
+				last_seen_at DESC
+			);
+			`;
+
+		void this.sql`
+			CREATE INDEX IF NOT EXISTS
+				idx_regulatory_manifest_change_status
+			ON regulatory_manifest (
+				change_status
+			);
+		`;
+
+		void this.sql`
+			CREATE TABLE IF NOT EXISTS regulatory_analysis (
+			source TEXT NOT NULL,
+			source_id TEXT NOT NULL,
+			content_hash TEXT NOT NULL,
+
+			relevant INTEGER NOT NULL,
+			relevance_score REAL NOT NULL,
+			categories TEXT NOT NULL,
+			priority TEXT NOT NULL,
+
+			summary TEXT NOT NULL,
+			cra_impact TEXT NOT NULL,
+			interview_point TEXT,
+			reason TEXT NOT NULL,
+
+			analyzed_at TEXT NOT NULL,
+
+			PRIMARY KEY (
+			source,
+			source_id,
+			content_hash
+			)
+		);
+		`;
+
+		void this.sql`
+			CREATE INDEX IF NOT EXISTS
+				idx_regulatory_analysis_source_item
+			ON regulatory_analysis (
+			source,
+			source_id
+			);
+		`;
+
+		void this.sql`
+			CREATE INDEX IF NOT EXISTS
+			idx_regulatory_analysis_analyzed_at
+			ON regulatory_analysis (
+			analyzed_at DESC
+			);
+		`;
+	}
+
 	getModel(): LanguageModel {
 		const workersAI = createWorkersAI({
 			binding: this.env.AI,
@@ -142,22 +234,196 @@ not regulatory requirements.
 			...collection.courses.map(courseToRegulatoryItem),
 		];
 
-		const analyzer = new RegulatoryAnalyzer(this.getModel());
+		const manifestStore = this.getManifestStore();
 
-		const analysis = await analyzer.analyze(regulatoryItems, {
-			includeIrrelevant: input.includeIrrelevant ?? false,
+		const analysisStore = this.getAnalysisStore();
 
-			onBatchProgress: async (completedBatches, totalBatches) => {
-				console.log("[KoNECTRegulatoryAgent] analyzing", {
-					completedBatches,
-					totalBatches,
-				});
-			},
+		const itemsForAnalysis: RegulatoryItem[] = [];
+
+		const cachedAnalyses = new Map<string, RegulatoryAnalysisRecord>();
+
+		const briefingCandidates: BriefingCandidate[] = [];
+
+		const analysisContextByItemId = new Map<
+			string,
+			{
+				item: RegulatoryItem;
+				contentHash: string;
+				changeStatus: "new" | "changed" | "unchanged";
+			}
+		>();
+
+		let newCount = 0;
+		let changedCount = 0;
+		let unchangedCount = 0;
+
+		for (const item of regulatoryItems) {
+			const contentHash = await createRegulatoryContentHash(item);
+
+			const change = manifestStore.checkAndUpsert({
+				source: item.source,
+				sourceId: item.sourceId,
+				title: item.title,
+				url: item.url,
+				publishedAt: item.publishedAt,
+				contentHash,
+			});
+
+			analysisContextByItemId.set(item.id, {
+				item,
+				contentHash,
+				changeStatus: change.status,
+			});
+
+			switch (change.status) {
+				case "new":
+					newCount++;
+					break;
+
+				case "changed":
+					changedCount++;
+					break;
+
+				case "unchanged":
+					unchangedCount++;
+					break;
+			}
+
+			const cached = analysisStore.get(item.source, item.sourceId, contentHash);
+
+			console.log("[KoNECTRegulatoryAgent] analysis cache lookup", {
+				source: item.source,
+				sourceId: item.sourceId,
+				contentHash,
+				hit: Boolean(cached),
+			});
+
+			if (cached) {
+				cachedAnalyses.set(item.sourceId, cached);
+				if (cached.relevant) {
+					briefingCandidates.push({
+						source: item.source,
+						sourceId: item.sourceId,
+						title: item.title,
+						url: item.url,
+						publishedAt: item.publishedAt,
+						changeStatus: change.status,
+						relevant: cached.relevant,
+						relevanceScore: cached.relevanceScore,
+						priority: cached.priority,
+						categories: cached.categories,
+						summary: cached.summary,
+						craImpact: cached.craImpact,
+						interviewPoint: cached.interviewPoint,
+						reason: cached.reason,
+						fromCache: true,
+					});
+				}
+				continue;
+			}
+
+			itemsForAnalysis.push(item);
+		}
+
+		console.log("[KoNECTRegulatoryAgent] manifest filtering", {
+			candidates: regulatoryItems.length,
+
+			newCount,
+			changedCount,
+			unchangedCount,
+
+			forAnalysis: itemsForAnalysis.length,
 		});
 
-		const warnings = collection.failures.map(
-			(failure) => `${failure.target}: ${failure.message}`,
-		);
+		const analyzer = new RegulatoryAnalyzer(this.getModel());
+
+		const analysis =
+			itemsForAnalysis.length > 0
+				? await analyzer.analyze(itemsForAnalysis, {
+						includeIrrelevant: true,
+						onBatchProgress: async (completedBatches, totalBatches) => {
+							console.log("[KoNECTRegulatoryAgent] analyzing", {
+								completedBatches,
+								totalBatches,
+							});
+						},
+					})
+				: {
+						items: [],
+						relevantCount: 0,
+					};
+
+		for (const analyzedItem of analysis.items) {
+			const context = analysisContextByItemId.get(analyzedItem.id);
+
+			if (!context) {
+				console.warn("[KoNECTRegulatoryAgent] missing analysis context", {
+					id: analyzedItem.id,
+				});
+
+				continue;
+			}
+
+			const { item, contentHash } = context;
+
+			console.log("[KoNECTRegulatoryAgent] analysis cache save candidate", {
+				source: item.source,
+				sourceId: item.sourceId,
+				contentHash,
+			});
+
+			const saved = analysisStore.upsert({
+				source: item.source,
+				sourceId: item.sourceId,
+				contentHash,
+				relevant: analyzedItem.relevant,
+				relevanceScore: analyzedItem.relevanceScore,
+				categories: analyzedItem.categories,
+				priority: analyzedItem.priority,
+				summary: analyzedItem.summary,
+				craImpact: analyzedItem.craImpact,
+				interviewPoint: analyzedItem.interviewPoint,
+				reason: analyzedItem.reason,
+			});
+
+			if (analyzedItem.relevant) {
+				briefingCandidates.push({
+					source: item.source,
+					sourceId: item.sourceId,
+					title: item.title,
+					url: item.url,
+					publishedAt: item.publishedAt,
+					changeStatus: context.changeStatus,
+					relevant: analyzedItem.relevant,
+					relevanceScore: analyzedItem.relevanceScore,
+					priority: analyzedItem.priority,
+					categories: analyzedItem.categories,
+					summary: analyzedItem.summary,
+					craImpact: analyzedItem.craImpact,
+					interviewPoint: analyzedItem.interviewPoint,
+					reason: analyzedItem.reason,
+					fromCache: false,
+				});
+			}
+
+			console.log("[MFDSRegulatoryAgent] analysis cache saved", {
+				source: saved.source,
+				sourceId: saved.sourceId,
+				contentHash: saved.contentHash,
+			});
+		}
+
+		const outputItems = input.includeIrrelevant
+			? analysis.items
+			: analysis.items.filter((item) => item.relevant);
+
+		const relevantCount = analysis.items.filter((item) => item.relevant).length;
+
+		const warnings = [
+			...collection.failures.map(
+				(failure) => `${failure.target}: ${failure.message}`,
+			),
+		];
 
 		console.log("[KoNECTRegulatoryAgent] workflow completed", {
 			totalFetched: collection.totalFetched,
@@ -166,15 +432,30 @@ not regulatory requirements.
 			warningCount: warnings.length,
 		});
 
+		const reusedRelevantCount = briefingCandidates.filter(
+			(item) => item.fromCache,
+		).length;
+
 		return {
 			source: "KONECT",
 			collectedAt: collection.collectedAt,
 			totalFetched: collection.totalFetched,
 			candidateCount: regulatoryItems.length,
-			relevantCount: analysis.relevantCount,
-			items: analysis.items,
+			relevantCount,
+			items: outputItems,
 			failures: collection.failures,
 			warnings,
+			manifest: {
+				newCount,
+				changedCount,
+				unchangedCount,
+			},
+			analysisCache: {
+				analyzedCount: analysis.items.length,
+				reusedCount: cachedAnalyses.size,
+				reusedRelevantCount,
+			},
+			briefingCandidates,
 		};
 	}
 
@@ -221,6 +502,14 @@ not regulatory requirements.
 				(failure) => `${failure.target}: ${failure.message}`,
 			),
 		};
+	}
+
+	private getManifestStore() {
+		return new RegulatoryManifestStore(this.sql.bind(this));
+	}
+
+	private getAnalysisStore() {
+		return new RegulatoryAnalysisStore(this.sql.bind(this));
 	}
 }
 
@@ -317,29 +606,17 @@ function courseToRegulatoryItem(course: KoNECTCourseItem): RegulatoryItem {
 
 		metadata: {
 			category: course.category,
-
 			level: course.level,
-
 			courseType: course.courseType,
-
 			durationDays: course.durationDays,
-
 			durationHours: course.durationHours,
-
 			capacity: course.capacity,
-
 			applicationStart: course.applicationStart,
-
 			applicationEnd: course.applicationEnd,
-
 			courseStart: course.courseStart,
-
 			courseEnd: course.courseEnd,
-
 			price: course.price,
-
 			status: course.status,
-
 			statusClass: course.statusClass,
 		},
 	};

@@ -92,20 +92,30 @@ export class RegulatoryAnalyzer {
 				itemCount: batch.length,
 			});
 
-			const result = await this.analyzeBatch(
-				batch,
-				maxDescriptionLength,
-				options.abortSignal,
-			);
+			try {
+				const result = await this.analyzeBatch(
+					batch,
+					maxDescriptionLength,
+					options.abortSignal,
+				);
 
-			if (result) {
-				analyzedItems.push(...result);
+				if (result) {
+					analyzedItems.push(...result);
+				}
+
+				console.log("[RegulatoryAnalyzer] batch complete", {
+					batch: index + 1,
+					totalBatches: batches.length,
+				});
+			} catch (error) {
+				console.error("[RegulatoryAnalyzer] batch failed", {
+					batch: index + 1,
+					totalBatches: batches.length,
+					error,
+				});
+
+				throw error;
 			}
-
-			console.log("[RegulatoryAnalyzer] batch complete", {
-				batch: index + 1,
-				totalBatches: batches.length,
-			});
 
 			await options.onBatchProgress?.(index + 1, batches.length);
 		}
@@ -315,6 +325,7 @@ ${JSON.stringify(compactItems, null, 2)}
 				results.push({
 					id: sourceItem.id,
 					source: sourceItem.source,
+					sourceId: sourceItem.sourceId,
 					title: sourceItem.title,
 					url: sourceItem.url,
 					publishedAt: sourceItem.publishedAt,
@@ -337,6 +348,7 @@ ${JSON.stringify(compactItems, null, 2)}
 			results.push({
 				id: sourceItem.id,
 				source: sourceItem.source,
+				sourceId: sourceItem.sourceId,
 				title: sourceItem.title,
 				url: sourceItem.url,
 				publishedAt: sourceItem.publishedAt,

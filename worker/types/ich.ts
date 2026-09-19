@@ -1,5 +1,4 @@
 import type { AnalyzedRegulatoryItem } from "./regulatory.ts";
-
 import type { SourceWorkflowResult } from "./workflow.ts";
 
 export type ICHTopic = "Quality" | "Safety" | "Efficacy" | "Multidisciplinary";
@@ -142,6 +141,7 @@ export interface ICHWorkflowResult extends SourceWorkflowResult {
 }
 
 export interface ICHWorkflowInput {
+	includeIrrelevant: boolean;
 	member?: string;
 	guidelinePrefixes?: string[];
 	guidelineCodes?: string[];

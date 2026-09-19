@@ -50,10 +50,4 @@ export interface MFDSCollectionFailure {
 export interface MFDSWorkflowResult extends SourceWorkflowResult {
 	source: "MFDS";
 	failures: MFDSCollectionFailure[];
-
-	manifest?: {
-		newCount: number;
-		changedCount: number;
-		unchangedCount: number;
-	};
 }

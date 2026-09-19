@@ -1,4 +1,5 @@
 import type { RegulatoryItem } from "../types/regulatory.ts";
+import { normalizeMetadataForHash } from "./normalizeMetadataForHash.ts";
 
 export async function createRegulatoryContentHash(
 	item: RegulatoryItem,
@@ -15,15 +16,22 @@ export async function createRegulatoryContentHash(
 }
 
 function createCanonicalRegulatoryContent(item: RegulatoryItem): string {
-	return JSON.stringify({
+	const payload = {
 		source: item.source,
 		sourceId: item.sourceId,
 		title: normalizeText(item.title),
 		description: normalizeText(item.description),
 		publishedAt: item.publishedAt ?? null,
 		url: item.url ?? null,
-		metadata: sortObject(item.metadata ?? {}),
-	});
+		metadata: normalizeMetadataForHash(item.metadata ?? {}),
+	};
+
+	// console.log(
+	// 	"[RegulatoryContentHash] payload",
+	// 	JSON.stringify(payload, null, 2),
+	// );
+
+	return JSON.stringify(payload);
 }
 
 function normalizeText(value?: string): string | null {
@@ -32,20 +40,4 @@ function normalizeText(value?: string): string | null {
 	}
 
 	return value.replace(/\s+/g, " ").trim();
-}
-
-function sortObject(value: unknown): unknown {
-	if (Array.isArray(value)) {
-		return value.map(sortObject);
-	}
-
-	if (value && typeof value === "object") {
-		return Object.fromEntries(
-			Object.entries(value)
-				.sort(([a], [b]) => a.localeCompare(b))
-				.map(([key, nested]) => [key, sortObject(nested)]),
-		);
-	}
-
-	return value;
 }

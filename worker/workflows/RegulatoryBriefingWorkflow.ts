@@ -11,6 +11,7 @@ import type {
 } from "../types/workflow.ts";
 import { createInitialWorkflowState } from "../helpers/createInitialWorkflowState.ts";
 import { buildRegulatoryBriefing } from "../helpers/buildRegulatoryBriefing.ts";
+import { selectBriefingItems } from "../helpers/selectBriefingItems.ts";
 
 export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 	CraAssistantAgent,
@@ -160,6 +161,7 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 						return await this.agent.collectICHForWorkflow({
 							member: "MFDS, Republic of Korea",
 							guidelinePrefixes: ["E6"],
+							includeIrrelevant: false,
 						});
 					},
 				)
@@ -189,7 +191,12 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 				stage: "sourceProcessing",
 				step: "sourceProcessing",
 				percent: 0.55,
-				message: `ICH processing completed: ${ichResult.relevantCount} CRA-relevant updates`,
+				message:
+					`ICH processing completed: ` +
+					`${ichResult.manifest?.newCount ?? 0} new, ` +
+					`${ichResult.manifest?.changedCount ?? 0} changed, ` +
+					`${ichResult.manifest?.unchangedCount ?? 0} unchanged, ` +
+					`${ichResult.relevantCount} CRA-relevant analyzed update(s)`,
 			});
 		}
 
@@ -244,7 +251,12 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 				stage: "sourceProcessing",
 				step: "sourceProcessing",
 				percent: 0.7,
-				message: `KoNECT processing complete: ${konectResult.relevantCount} relevant item(s)`,
+				message:
+					`KoNECT processing complete: ` +
+					`${konectResult.manifest?.newCount ?? 0} new, ` +
+					`${konectResult.manifest?.changedCount ?? 0} changed, ` +
+					`${konectResult.manifest?.unchangedCount ?? 0} unchanged, ` +
+					`${konectResult.relevantCount} relevant item(s)`,
 			});
 		}
 
@@ -295,6 +307,46 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			step: "synthesis",
 			percent: 0.8,
 			message: "Synthesizing regulatory findings",
+		});
+
+		const allCandidates = [
+			...(mfdsResult?.briefingCandidates ?? []),
+			...(ichResult?.briefingCandidates ?? []),
+			...(konectResult?.briefingCandidates ?? []),
+		];
+
+		const selection = selectBriefingItems(allCandidates);
+
+		console.log("[RegulatoryBriefingWorkflow] briefing selection", {
+			mainItems: selection.mainItems.map((item) => ({
+				source: item.source,
+				sourceId: item.sourceId,
+				title: item.title,
+				priority: item.priority,
+				changeStatus: item.changeStatus,
+				fromCache: item.fromCache,
+			})),
+
+			referenceItems: selection.referenceItems.map((item) => ({
+				source: item.source,
+				sourceId: item.sourceId,
+				title: item.title,
+				relevant: item.relevant,
+				relevanceScore: item.relevanceScore,
+				priority: item.priority,
+				changeStatus: item.changeStatus,
+				fromCache: item.fromCache,
+			})),
+
+			hiddenItems: selection.hiddenItems.map((item) => ({
+				source: item.source,
+				sourceId: item.sourceId,
+				title: item.title,
+				relevant: item.relevant,
+				priority: item.priority,
+				changeStatus: item.changeStatus,
+				fromCache: item.fromCache,
+			})),
 		});
 
 		const synthesisResult = await step.do(
@@ -391,17 +443,12 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			await step.mergeAgentState({
 				regulatoryWorkflow: {
 					...this.agent.getState().regulatoryWorkflow,
-
 					steps: {
 						...this.agent.getState().regulatoryWorkflow.steps,
-
 						enrichment: {
 							status: "completed",
-
 							message: "RAG enrichment completed",
-
 							progress: 1,
-
 							completedAt: new Date().toISOString(),
 						},
 					},
@@ -411,13 +458,11 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			await step.mergeAgentState({
 				regulatoryWorkflow: {
 					...this.agent.getState().regulatoryWorkflow,
-
 					steps: {
 						...this.agent.getState().regulatoryWorkflow.steps,
 
 						enrichment: {
 							status: "skipped",
-
 							message: "RAG enrichment disabled",
 						},
 					},
@@ -433,19 +478,14 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			await step.mergeAgentState({
 				regulatoryWorkflow: {
 					...this.agent.getState().regulatoryWorkflow,
-
 					stage: "awaitingApproval",
-
 					progress: 0.75,
-
 					steps: {
 						...this.agent.getState().regulatoryWorkflow.steps,
 
 						approval: {
 							status: "running",
-
 							message: "Waiting for user approval",
-
 							startedAt: new Date().toISOString(),
 						},
 					},
@@ -454,11 +494,8 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 
 			await this.reportProgress({
 				stage: "awaitingApproval",
-
 				step: "approval",
-
 				percent: 0.75,
-
 				message: "Waiting for user approval before report delivery",
 			});
 
@@ -475,11 +512,8 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 
 						approval: {
 							status: "completed",
-
 							message: "Approved",
-
 							progress: 1,
-
 							completedAt: new Date().toISOString(),
 						},
 					},
@@ -495,7 +529,6 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 
 						approval: {
 							status: "skipped",
-
 							message: "Approval not required",
 						},
 					},
@@ -510,21 +543,14 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 		await step.mergeAgentState({
 			regulatoryWorkflow: {
 				...this.agent.getState().regulatoryWorkflow,
-
 				stage: "reporting",
-
 				progress: 0.8,
-
 				steps: {
 					...this.agent.getState().regulatoryWorkflow.steps,
-
 					reporting: {
 						status: "running",
-
 						message: "Generating weekly regulatory briefing",
-
 						progress: 0,
-
 						startedAt: new Date().toISOString(),
 					},
 				},
@@ -533,11 +559,8 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 
 		await this.reportProgress({
 			stage: "reporting",
-
 			step: "reporting",
-
 			percent: 0.8,
-
 			message: "Generating weekly regulatory briefing",
 		});
 
@@ -546,6 +569,9 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 
 			async () => {
 				return buildRegulatoryBriefing({
+					mainItems: selection.mainItems,
+					referenceItems: selection.referenceItems,
+
 					since: params.since,
 					until: params.until,
 
@@ -554,24 +580,38 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			},
 		);
 
+		console.log("[RegulatoryBriefingWorkflow] generated briefing", {
+			summary: briefing.summary,
+
+			highlights: briefing.highlights.map((item) => ({
+				source: item.source,
+				title: item.title,
+				priority: item.priority,
+			})),
+
+			references: briefing.references.map((item) => ({
+				source: item.source,
+				title: item.title,
+				priority: item.priority,
+				changeStatus: item.changeStatus,
+				fromCache: item.fromCache,
+			})),
+
+			stats: briefing.stats,
+		});
+
 		await step.mergeAgentState({
 			regulatoryWorkflow: {
 				...this.agent.getState().regulatoryWorkflow,
-
 				progress: 0.9,
-
 				briefing,
-
 				steps: {
 					...this.agent.getState().regulatoryWorkflow.steps,
 
 					reporting: {
 						status: "completed",
-
 						message: "Weekly regulatory briefing generated",
-
 						progress: 1,
-
 						completedAt: new Date().toISOString(),
 					},
 				},

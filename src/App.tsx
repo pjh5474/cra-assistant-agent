@@ -11,6 +11,7 @@ import { WorkflowPanel } from "@/components/workflow/WorkflowPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isToolUIPart } from "ai";
 import type { CraAssistantAgentState } from "@/types/agent";
+import type { WorkflowRunParams } from "@/types/workflows";
 import { activityFromRun, normalizeChatActivity } from "./lib/subagent.ts";
 import { Button } from "./components/ui/button.tsx";
 
@@ -124,15 +125,15 @@ export default function App() {
 		setInput("");
 	}
 
-	const handleWorkflowStart = async () => {
+	const handleWorkflowStart = async (params: WorkflowRunParams) => {
 		await agent.stub.startRegulatoryBriefingWorkflow({
-			since: "2026-09-18T00:00:00+09:00",
-
-			until: "2026-09-19T23:59:59+09:00",
-
-			sources: ["MFDS", "ICH", "KONECT"],
-
+			since: params.since,
+			until: params.until,
+			sources: params.sources,
 			purpose: "weekly-briefing",
+			includeRag: params.includeRag,
+			requireApproval: params.requireApproval,
+			sendEmail: params.sendEmail,
 		});
 	};
 
