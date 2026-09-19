@@ -16,6 +16,9 @@ import { activityFromRun, normalizeChatActivity } from "./lib/subagent.ts";
 import { Button } from "./components/ui/button.tsx";
 import { AgentMemoryPanel } from "./components/memory/AgentMemoryPanel.tsx";
 import type { AgentMemorySnapshot } from "./types/agent-memory.ts";
+import type { AgentActivity } from "./types/agent-activity.ts";
+import { AgentActivityPanel } from "./components/activity/AgentActivityPanel.tsx";
+import { mapAgentToolActivities } from "./lib/agent-activity.ts";
 
 export default function App() {
 	const agent = useAgent<any, CraAssistantAgentState>({
@@ -48,6 +51,20 @@ export default function App() {
 	const agentTools = useAgentToolEvents({
 		agent,
 	});
+
+	const { runningActivities, recentActivities } = useMemo(() => {
+		const activities = mapAgentToolActivities(agentTools);
+
+		return {
+			runningActivities: activities.filter(
+				(activity) => activity.status === "running",
+			),
+
+			recentActivities: activities
+				.filter((activity) => activity.status !== "running")
+				.slice(0, 5),
+		};
+	}, [agentTools]);
 
 	const isBusy = isStreaming || isRecovering || status === "submitted";
 
@@ -152,16 +169,6 @@ export default function App() {
 		stop();
 	};
 
-	const handleTestMFDSMemory = async () => {
-		try {
-			const result = await agent.stub.getRegulatoryMemory();
-
-			console.log("[MFDS Memory Test Result]", result);
-		} catch (error) {
-			console.error("[MFDS Memory Test Failed]", error);
-		}
-	};
-
 	const handleMemoryRefresh = async () => {
 		if (memoryLoading) {
 			return;
@@ -261,16 +268,22 @@ export default function App() {
 					</TabsContent>
 				</Tabs>
 
-				<aside className="space-y-4">
+				<aside className="hidden min-h-0 lg:block space-y-4">
 					<AgentOverview />
 					<CurrentActivityCard activity={currentActivity} />
-					<Button
+					<div className="sticky top-4">
+						<AgentActivityPanel
+							runningActivities={runningActivities}
+							recentActivities={recentActivities}
+						/>
+					</div>
+					{/* <Button
 						type="button"
 						variant="outline"
 						onClick={handleTestMFDSMemory}
 					>
 						Test MFDS Memory
-					</Button>
+					</Button> */}
 				</aside>
 			</main>
 		</div>

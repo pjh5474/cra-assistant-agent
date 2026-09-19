@@ -522,6 +522,21 @@ not regulatory requirements.
 	getMemorySnapshot() {
 		return this.getMemoryStore().getSnapshot("KONECT");
 	}
+
+	@callable()
+	getMemoryItem(sourceId: string) {
+		return this.getMemoryStore().getItem("KONECT", sourceId);
+	}
+
+	@callable()
+	listRecentMemoryChanges(limit = 20) {
+		return this.getMemoryStore().listRecentChanges("KONECT", limit);
+	}
+
+	@callable()
+	searchMemory(query: string, limit = 20) {
+		return this.getMemoryStore().search(query, "KONECT", limit);
+	}
 }
 
 /* -------------------------------------------------------------------------- */

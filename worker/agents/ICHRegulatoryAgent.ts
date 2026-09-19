@@ -501,6 +501,21 @@ export class ICHRegulatoryAgent extends Think<Env> {
 	getMemorySnapshot() {
 		return this.getMemoryStore().getSnapshot("ICH");
 	}
+
+	@callable()
+	getMemoryItem(sourceId: string) {
+		return this.getMemoryStore().getItem("ICH", sourceId);
+	}
+
+	@callable()
+	listRecentMemoryChanges(limit = 20) {
+		return this.getMemoryStore().listRecentChanges("ICH", limit);
+	}
+
+	@callable()
+	searchMemory(query: string, limit = 20) {
+		return this.getMemoryStore().search(query, "ICH", limit);
+	}
 }
 
 interface FilterGuidelinesOptions {

@@ -1,5 +1,7 @@
 import type { MFDSFeed } from "./types/mfds.ts";
 
+export const MAX_RANGE_DAYS = 30;
+
 export const MFDS_FEEDS: readonly MFDSFeed[] = [
 	{
 		type: "recent-law",

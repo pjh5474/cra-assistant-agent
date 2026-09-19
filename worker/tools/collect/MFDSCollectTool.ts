@@ -2,6 +2,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { MFDSCollector } from "../../source-collectors/MFDSCollector.ts";
 import { MFDS_FEEDS } from "../../constants.ts";
+import { validateDateRange } from "../../helpers/validateDateRange.ts";
 
 const collector = new MFDSCollector();
 
@@ -47,19 +48,31 @@ export function createMFDSCollectTool(
 ) {
 	return tool({
 		description: `
-  Collect newly published regulatory information
-  from official MFDS RSS feeds.
+		Collect newly published regulatory information
+		from official MFDS RSS feeds.
 
-  A successful response containing zero items is valid and means
-  that no matching MFDS items were found for that period.
+		A successful response containing zero items is valid and means
+		that no matching MFDS items were found for that period.
 
-  Do not broaden or remove date filters merely because the result is empty.
+		Do not broaden or remove date filters merely because the result is empty.
+
+		For "latest", "recent", or unspecified current MFDS checks,
+		use a narrow recent window, normally no more than 15 days.
+
+		Do not infer multi-month or multi-year ranges unless the user
+		explicitly requests historical research.
+
+		IMPORTANT:
+		A single MFDS live lookup may cover at most 30 days.
+		For current/recent checks, normally use 15 days or less.
+		Never submit a full-year or multi-month range in one call.
 
       `.trim(),
 
 		inputSchema,
 
 		execute: async (input) => {
+			validateDateRange(input.since, input.until);
 			console.log("[MFDSCollectTool] execute start", input);
 
 			try {

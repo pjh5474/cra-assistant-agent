@@ -13,6 +13,8 @@ export interface SubagentActivity {
 	progress?: number;
 	runId?: string;
 	updatedAt: string;
+	agent?: "MFDS" | "ICH" | "KONECT";
+	tool?: string;
 }
 
 export interface WorkspaceFile {
