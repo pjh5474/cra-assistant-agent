@@ -1,9 +1,4 @@
 import type { RegulatoryAgentSource, SubagentStatus } from "@/types/agent";
-import type { AgentToolRunState } from "agents";
-import type {
-	RegulatorySource,
-	SubagentActivity,
-} from "../../shared/types/agent.ts";
 
 export function formatTime(value?: string) {
 	if (!value) {
@@ -65,73 +60,4 @@ export function getSubagentInfo(agentType: string): {
 				displayName: agentType,
 			};
 	}
-}
-
-export function activityFromRun(
-	run: AgentToolRunState | undefined,
-): SubagentActivity | undefined {
-	if (!run) {
-		return undefined;
-	}
-
-	let status: SubagentStatus;
-
-	switch (run.status) {
-		case "running":
-			status = "running";
-			break;
-
-		case "completed":
-			status = "completed";
-			break;
-
-		case "error":
-		case "aborted":
-		case "interrupted":
-			status = "error";
-			break;
-
-		default:
-			status = "idle";
-	}
-
-	const agentInfo = getSubagentInfo(run.agentType);
-
-	return {
-		source: agentInfo.source as RegulatorySource,
-		displayName: agentInfo.displayName,
-		status,
-		phase: run.progress?.phase,
-		message: run.progress?.message,
-		progress: run.status === "completed" ? 1 : run.progress?.fraction,
-		runId: run.runId,
-		updatedAt: new Date().toISOString(),
-	};
-}
-
-export function normalizeChatActivity<
-	T extends {
-		status?: string;
-		progress?: number;
-		message?: string;
-	},
->(
-	activity: T | undefined,
-	isBusy: boolean,
-	wasStopped: boolean,
-): T | undefined {
-	if (!activity) {
-		return undefined;
-	}
-
-	if (!isBusy && activity.status === "running") {
-		return {
-			...activity,
-			status: wasStopped ? "aborted" : "idle",
-
-			message: wasStopped ? "Aborted by user" : undefined,
-		};
-	}
-
-	return activity;
 }

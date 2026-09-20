@@ -1,14 +1,11 @@
 import { Activity } from "lucide-react";
-
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
 import { formatTime, statusLabel } from "@/lib/subagent";
-
-import type { SubagentActivity } from "../../../shared/types/agent.ts";
+import type { WorkflowActivity } from "@/lib/activityFromWorkflow.ts";
 
 interface CurrentActivityCardProps {
-	activity?: SubagentActivity;
+	activity?: WorkflowActivity;
 }
 
 export function CurrentActivityCard({ activity }: CurrentActivityCardProps) {

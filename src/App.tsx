@@ -17,7 +17,6 @@ import { WorkflowPanel } from "@/components/workflow/WorkflowPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getToolName, isToolUIPart } from "ai";
 import type { WorkflowRunParams } from "@/types/workflows";
-import { activityFromRun } from "./lib/subagent.ts";
 import { AgentMemoryPanel } from "./components/memory/AgentMemoryPanel.tsx";
 import type { AgentMemorySnapshot } from "./types/agent-memory.ts";
 import { AgentActivityPanel } from "./components/activity/AgentActivityPanel.tsx";
@@ -34,12 +33,15 @@ import type {
 import type { EmailDraft } from "shared/types/email.ts";
 import { EmailApprovalDialog } from "./components/email/EmailApprovalDialog.tsx";
 import { toast } from "sonner";
-import { EMAIL_APPROVAL_STORAGE_KEY, MAIN_TOOL_LABELS } from "./constants.ts";
+import { EMAIL_APPROVAL_STORAGE_KEY } from "./constants.ts";
 import type {
 	RegulatoryScheduleItem,
 	RegulatorySchedulePayload,
 } from "shared/types/schedule.ts";
 import { SchedulePanel } from "./components/schedule/SchedulePanel.tsx";
+import { activityFromWorkflow } from "./lib/activityFromWorkflow.ts";
+import { formatToolName } from "./lib/formatToolName.ts";
+import { mapWorkflowActivities } from "./lib/mapWorkflowActivities.ts";
 
 function stringifyActivityPreview(value: unknown): string | undefined {
 	if (value === undefined || value === null) {
@@ -135,9 +137,12 @@ export default function App() {
 		agent,
 	});
 
+	const workflow = agent.state?.regulatoryWorkflow;
+
 	const { runningActivities, recentActivities } = useMemo(() => {
 		const subAgentActivities = mapAgentToolActivities(agentTools);
 		const mainToolActivities: ReturnType<typeof mapAgentToolActivities> = [];
+		const workflowActivities = mapWorkflowActivities(workflow);
 
 		let order = 1_000_000;
 
@@ -148,14 +153,7 @@ export default function App() {
 				}
 
 				const toolName = part.type.replace(/^tool-/, "");
-				const displayName = MAIN_TOOL_LABELS[toolName];
-
-				// Only surface CraAssistantAgent tools that are useful for
-				// RAG / regulatory-memory observability. Sub-agent tool calls
-				// continue to come from useAgentToolEvents().
-				if (!displayName) {
-					continue;
-				}
+				const displayName = formatToolName(toolName);
 
 				const toolState = part.state;
 
@@ -188,7 +186,11 @@ export default function App() {
 			}
 		}
 
-		const activities = [...subAgentActivities, ...mainToolActivities];
+		const activities = [
+			...subAgentActivities,
+			...mainToolActivities,
+			...workflowActivities,
+		];
 
 		const deduped = Array.from(
 			new Map(activities.map((activity) => [activity.id, activity])).values(),
@@ -204,45 +206,14 @@ export default function App() {
 				.sort((a, b) => b.order - a.order)
 				.slice(0, 8),
 		};
-	}, [agentTools, messages]);
+	}, [agentTools, messages, workflow]);
 
 	const isBusy = isStreaming || isRecovering || status === "submitted";
 
-	const boundRuns = useMemo(() => {
-		const runs = [];
-
-		for (const message of messages) {
-			for (const part of message.parts) {
-				if (!isToolUIPart(part)) {
-					continue;
-				}
-
-				runs.push(...agentTools.getRunsForToolCall(part.toolCallId));
-			}
-		}
-
-		return Array.from(new Map(runs.map((run) => [run.runId, run])).values());
-	}, [messages, agentTools]);
-
-	const allAgentRuns = useMemo(() => {
-		const runs = [...boundRuns, ...(agentTools.unboundRuns ?? [])];
-
-		return Array.from(new Map(runs.map((run) => [run.runId, run])).values());
-	}, [boundRuns, agentTools.unboundRuns]);
-
-	const latestRegulatoryRun = useMemo(() => {
-		return [...allAgentRuns]
-			.reverse()
-			.find((run) =>
-				[
-					"MFDSRegulatoryAgent",
-					"ICHRegulatoryAgent",
-					"KONECTRegulatoryAgent",
-				].includes(run.agentType),
-			);
-	}, [allAgentRuns]);
-
-	const currentActivity = activityFromRun(latestRegulatoryRun);
+	const currentActivity = useMemo(
+		() => activityFromWorkflow(workflow),
+		[workflow],
+	);
 
 	useEffect(() => {
 		for (const message of messages) {
@@ -417,8 +388,6 @@ export default function App() {
 			setRegulatoryDocumentsLoading(false);
 		}
 	};
-
-	const workflow = agent.state?.regulatoryWorkflow;
 
 	const handleWorkspaceRefresh = async () => {
 		await agent.stub.refreshFiles();

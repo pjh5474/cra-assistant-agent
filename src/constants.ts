@@ -1,8 +1,13 @@
 export const MAIN_TOOL_LABELS: Record<string, string> = {
+	getTodayDate: "Get Today's Date",
 	searchRegulatoryDocuments: "Regulatory RAG Search",
 	searchRegulatoryMemory: "Regulatory Memory Search",
 	listRecentRegulatoryChanges: "Recent Regulatory Changes",
 	getRegulatoryAnalysis: "Regulatory Analysis Lookup",
+	prepareEmailDraft: "Email Draft Preparation",
+	scheduleRegulatoryBriefing: "Schedule Regulatory Briefing",
+	getRegulatorySchedules: "Get Regulatory Schedules",
+	removeRegulatorySchedule: "Remove Regulatory Schedule",
 };
 
 export const EMAIL_APPROVAL_STORAGE_KEY =
