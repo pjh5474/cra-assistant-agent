@@ -16,6 +16,7 @@ import { activityFromRun, normalizeChatActivity } from "./lib/subagent.ts";
 import { AgentMemoryPanel } from "./components/memory/AgentMemoryPanel.tsx";
 import type { AgentMemorySnapshot } from "./types/agent-memory.ts";
 import { AgentActivityPanel } from "./components/activity/AgentActivityPanel.tsx";
+import { UserMemoryPanel } from "./components/memory/UserMemoryPanel.tsx";
 import { mapAgentToolActivities } from "./lib/agent-activity.ts";
 
 const MAIN_TOOL_LABELS: Record<string, string> = {
@@ -52,6 +53,10 @@ export default function App() {
 	);
 
 	const [memoryLoading, setMemoryLoading] = useState(false);
+
+	const [userMemory, setUserMemory] = useState("");
+	const [userMemoryLoading, setUserMemoryLoading] = useState(false);
+	const [userMemorySaving, setUserMemorySaving] = useState(false);
 
 	const {
 		messages,
@@ -268,6 +273,65 @@ export default function App() {
 		}
 	};
 
+	const handleUserMemoryRefresh = async () => {
+		if (userMemoryLoading) {
+			return;
+		}
+
+		setUserMemoryLoading(true);
+
+		try {
+			const result = await agent.stub.getUserMemory();
+			setUserMemory(result.content ?? "");
+		} catch (error) {
+			console.error("[App] failed to load user memory", error);
+		} finally {
+			setUserMemoryLoading(false);
+		}
+	};
+
+	const handleUserMemorySave = async (content: string) => {
+		if (userMemorySaving) {
+			return;
+		}
+
+		setUserMemorySaving(true);
+
+		try {
+			const result = await agent.stub.updateUserMemory(content);
+
+			if (result.success) {
+				setUserMemory(content);
+			}
+		} catch (error) {
+			console.error("[App] failed to update user memory", error);
+			throw error;
+		} finally {
+			setUserMemorySaving(false);
+		}
+	};
+
+	const handleUserMemoryClear = async () => {
+		if (userMemorySaving) {
+			return;
+		}
+
+		setUserMemorySaving(true);
+
+		try {
+			const result = await agent.stub.clearUserMemory();
+
+			if (result.success) {
+				setUserMemory("");
+			}
+		} catch (error) {
+			console.error("[App] failed to clear user memory", error);
+			throw error;
+		} finally {
+			setUserMemorySaving(false);
+		}
+	};
+
 	const workflow = agent.state?.regulatoryWorkflow;
 
 	return (
@@ -335,11 +399,22 @@ export default function App() {
 					</TabsContent>
 
 					<TabsContent value="memory" keepMounted>
-						<AgentMemoryPanel
-							memory={memory}
-							loading={memoryLoading}
-							onRefresh={handleMemoryRefresh}
-						/>
+						<div className="space-y-6">
+							<UserMemoryPanel
+								memory={userMemory}
+								loading={userMemoryLoading}
+								saving={userMemorySaving}
+								onRefresh={handleUserMemoryRefresh}
+								onSave={handleUserMemorySave}
+								onClear={handleUserMemoryClear}
+							/>
+
+							<AgentMemoryPanel
+								memory={memory}
+								loading={memoryLoading}
+								onRefresh={handleMemoryRefresh}
+							/>
+						</div>
 					</TabsContent>
 				</Tabs>
 

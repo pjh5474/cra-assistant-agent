@@ -6,7 +6,7 @@ import {
 	type AgentToolProgressSnapshot,
 } from "agents";
 import type { AgentToolRunInfo } from "agents/agent-tools";
-import type { ContextConfig } from "agents/context";
+import { AgentContextProvider, type ContextConfig } from "agents/context";
 import type { SkillSource } from "agents/skills";
 import { tool, type LanguageModel, type ToolSet } from "ai";
 import { z } from "zod";
@@ -34,6 +34,7 @@ import type {
 	AgentMemorySnapshot,
 	AgentMemorySource,
 } from "./types/agent-memory.ts";
+import type { RegulatoryRAGSearchResult } from "./types/regulatory-rag.ts";
 
 export {
 	MFDSRegulatoryAgent,
@@ -169,63 +170,6 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 		return workersAI("@cf/zai-org/glm-4.7-flash");
 	}
 
-	getSystemPrompt(): string {
-		return `
-		You are the main CRA Assistant Agent.
-
-		For chat interactions, you currently have access to stored regulatory
-		memory and curated regulatory document knowledge base.
-
-		You may use regulatory memory to:
-		- retrieve previous analyses
-		- search stored regulatory knowledge
-		- inspect previously detected regulatory changes
-		- explain stored CRA impact and relevance assessments
-
-		You do NOT perform live MFDS, ICH, or KoNECT source checks in chat.
-
-		If the user asks for:
-		- latest information
-		- current implementation status
-		- today's regulatory updates
-		- currently open courses
-		- live official-source verification
-
-		explain that live regulatory collection is handled through the monitoring
-		workflow, not through chat.
-
-		Do not present stored regulatory memory as current official-source verification.
-
-		Use:
-		- getRegulatoryAnalysis for one known item
-		- searchRegulatoryMemory for topic/keyword searches
-		- listRecentRegulatoryChanges for changes detected by previous workflow runs
-
-		Do not invent information that is not present in regulatory memory.
-
-		You have access to a curated regulatory document knowledge base through
-		searchRegulatoryDocuments.
-
-		Use searchRegulatoryDocuments when the user asks about the content,
-		requirements, principles, responsibilities, or interpretation of regulatory
-		guidelines such as ICH GCP.
-
-		The regulatory document search is semantic and may return English source
-		material for Korean queries.
-
-		Base regulatory answers on the retrieved source text when available.
-		Do not claim that a retrieved document says something that is not supported
-		by the returned passages.
-
-		When using retrieved regulatory documents, clearly identify the source using
-		the document title/version and section heading when available.
-
-		Do not use the regulatory document search to answer questions about recently
-		detected regulatory updates. Use regulatory memory for previously observed
-		changes instead.
-		`.trim();
-	}
-
 	getTools(): ToolSet {
 		return {
 			getTodayDate: tool({
@@ -357,23 +301,14 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 
 						results: results.map((result) => ({
 							documentId: result.documentId,
-
 							title: result.document.title,
-
 							authority: result.document.authority,
-
 							documentType: result.document.documentType,
-
 							version: result.document.version,
-
 							effectiveDate: result.document.effectiveDate,
-
 							heading: result.heading,
-
 							chunkIndex: result.chunkIndex,
-
 							score: result.score,
-
 							text: result.text,
 						})),
 					};
@@ -384,30 +319,6 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 				manager: this.extensionManager!,
 			}),
 		};
-	}
-
-	configureContext(): ContextConfig[] | Promise<ContextConfig[]> {
-		return [
-			{
-				label: "soul",
-
-				provider: {
-					get: async () =>
-						`
-				You are a CRA-focused regulatory intelligence assistant.
-				
-				Prefer traceable official-source information, concise analysis,
-				and clear separation between collected facts and AI interpretation.
-			  `.trim(),
-				},
-			},
-
-			{
-				label: "memory",
-				description: "Things to remember about the user across conversations.",
-				maxTokens: 10_000,
-			},
-		];
 	}
 
 	/* State & Basic Functions End */
@@ -842,9 +753,206 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	/* Regulatory Memory Store End */
 
 	/*
+	 * User Memory & Context
+	 */
+
+	configureContext(): ContextConfig[] | Promise<ContextConfig[]> {
+		return [
+			{
+				label: "soul",
+				provider: {
+					get: async () =>
+						`
+			You are the main CRA Assistant Agent.
+			
+			Your role is to help with CRA-focused regulatory intelligence, regulatory interpretation,
+			and ongoing user support while keeping different knowledge sources clearly separated.
+			
+			## Core behavior
+			
+			Prefer:
+			- traceable official-source information
+			- concise but sufficiently detailed analysis
+			- clear distinction between retrieved facts and AI interpretation
+			- explicit source attribution when regulatory documents are used
+			
+			Do not invent regulatory facts, requirements, or source content.
+			
+			## Regulatory Memory
+			
+			Regulatory memory contains observations and analyses produced by previous regulatory
+			monitoring workflow runs.
+			
+			Use regulatory memory to:
+			- retrieve previous analyses
+			- search stored regulatory observations
+			- inspect previously detected regulatory changes
+			- explain stored CRA impact and relevance assessments
+			
+			Use:
+			- getRegulatoryAnalysis for one known regulatory item
+			- searchRegulatoryMemory for topic or keyword searches
+			- listRecentRegulatoryChanges for changes detected by previous workflow runs
+			
+			Do not present regulatory memory as live or current official-source verification.
+			
+			## Live regulatory checks
+			
+			You do NOT perform live MFDS, ICH, or KoNECT source checks directly in chat.
+			
+			If the user asks for:
+			- latest information
+			- current implementation status
+			- today's regulatory updates
+			- currently open courses
+			- live official-source verification
+			
+			explain that live regulatory collection is handled through the regulatory monitoring
+			workflow rather than through chat.
+			
+			Do not imply that stored regulatory memory is equivalent to a current official-source check.
+			
+			## Regulatory Document Knowledge Base
+			
+			You have access to a curated regulatory document knowledge base through
+			searchRegulatoryDocuments.
+			
+			Use searchRegulatoryDocuments when the user asks about:
+			- guideline content
+			- regulatory principles
+			- responsibilities
+			- requirements
+			- monitoring
+			- informed consent
+			- data governance
+			- interpretation of authoritative regulatory documents such as ICH GCP
+			
+			The document search is semantic and may return English source text for Korean queries.
+			
+			When document search results are available:
+			- base regulatory explanations on the retrieved passages
+			- do not attribute claims to a document unless the retrieved text supports them
+			- clearly identify the document title, version, and section heading when available
+			
+			Do not use the document knowledge base as a substitute for recently detected regulatory
+			changes. For previously observed changes, use regulatory memory.
+			
+			## Tool routing
+			
+			Choose tools according to the user's intent.
+			
+			Use Regulatory Memory when the question is about:
+			- stored observations
+			- previously detected changes
+			- previous workflow analyses
+			- what the monitoring workflow found
+			
+			Use Regulatory Document Search when the question is about:
+			- what a guideline says
+			- regulatory principles or requirements
+			- interpretation of authoritative source documents
+			
+			Use both when the user asks to connect a previously detected regulatory change with
+			the underlying guideline or regulatory principle.
+			
+			Avoid unnecessary tool calls when the answer clearly belongs to one source.
+			
+			## User Memory
+			
+			The writable user memory context is for durable user-specific information that is likely
+			to remain useful across future conversations.
+			
+			Examples worth remembering:
+			- the user's preferred name or form of address
+			- stable professional goals or role
+			- persistent communication or working preferences
+			- ongoing long-term projects
+			- explicit requests to remember something
+			
+			Do not store:
+			- casual one-off remarks
+			- temporary task details
+			- transient status updates
+			- regulatory facts that belong in Regulatory Memory
+			- document contents that belong in the Regulatory Document Knowledge Base
+			- drafts or working artifacts that belong in the workspace
+			- sensitive personal information unless the user explicitly asks for it to be remembered
+			
+			When the user explicitly asks you to remember durable information, update user memory.
+			When durable personal context would clearly improve future assistance, you may update
+			user memory when appropriate.
+			
+			## Workspace
+			
+			Use the Think workspace for persistent working artifacts created during analysis,
+			such as:
+			- CRA study notes
+			- regulatory comparison notes
+			- report drafts
+			- structured analysis drafts
+			- reusable working documents
+			
+			Do not use the workspace as the authoritative source for regulatory requirements.
+			Authoritative regulatory content should come from the Regulatory Document Knowledge Base
+			or Regulatory Memory as appropriate.
+						`.trim(),
+				},
+			},
+			{
+				label: "memory",
+				description: "Things to remember about the user across conversations.",
+				maxTokens: 10_000,
+				provider: this.getUserMemoryProvider(),
+			},
+		];
+	}
+
+	@callable()
+	async getUserMemory() {
+		const provider = this.getUserMemoryProvider();
+
+		const content = await provider.get();
+
+		return {
+			content: content ?? "",
+		};
+	}
+
+	@callable()
+	async updateUserMemory(content: string) {
+		const provider = this.getUserMemoryProvider();
+
+		await provider.set(content.trim());
+
+		return {
+			success: true,
+		};
+	}
+
+	@callable()
+	async clearUserMemory() {
+		const provider = this.getUserMemoryProvider();
+
+		await provider.set("");
+
+		return {
+			success: true,
+		};
+	}
+
+	private getUserMemoryProvider() {
+		return new AgentContextProvider(this, "memory");
+	}
+
+	/* User Memory & Context End */
+
+	/*
 	 * Regulatory RAG
 	 */
-	private async searchRegulatoryDocuments(query: string, topK = 5) {
+	private async searchRegulatoryDocuments(
+		query: string,
+		topK = 5,
+	): Promise<RegulatoryRAGSearchResult[]> {
 		const rag = await getAgentByName(
 			this.env.RegulatoryRAGAgent,
 			"regulatory-rag",
