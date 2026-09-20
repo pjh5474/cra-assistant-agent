@@ -41,7 +41,7 @@ import { extractRegulatoryDocumentMetadata } from "./helpers/extractRegulatoryDo
 
 import type { SubagentActivity } from "../shared/types/agent.ts";
 import type { EmailDraft } from "../shared/types/email.ts";
-import { buildEmailHtml } from "./helpers/buildHtml.ts";
+import { sendEmail } from "./services/emailDelivery.ts";
 
 export {
 	MFDSRegulatoryAgent,
@@ -1365,22 +1365,20 @@ export default {
 					);
 				}
 
-				const result = await env.EMAIL.send({
-					from: {
-						email: "cra-assistant@warwarsn.online",
-						name: "CRA Assistant",
-					},
+				const result = await sendEmail(env, {
 					to: body.to,
-					subject: body.subject.trim(),
-					text: body.body,
-					html: buildEmailHtml(body.body),
-				});
 
-				console.log("[Email] sent", {
-					to: body.to,
-					subject: body.subject,
-					sourceArtifact: body.sourceArtifact?.path,
-					result,
+					subject: body.subject.trim(),
+
+					body: body.body,
+
+					sourceArtifact: body.sourceArtifact?.path
+						? {
+								path: body.sourceArtifact.path,
+							}
+						: undefined,
+
+					createdAt: new Date().toISOString(),
 				});
 
 				return Response.json({

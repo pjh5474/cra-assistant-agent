@@ -18,6 +18,7 @@ export type WorkflowStepStatus =
 	| "running"
 	| "completed"
 	| "error"
+	| "failed"
 	| "skipped";
 
 export interface WorkflowStepState {
@@ -26,6 +27,8 @@ export interface WorkflowStepState {
 	progress?: number;
 	startedAt?: string;
 	completedAt?: string;
+	recipient?: string;
+	sentAt?: string;
 	error?: string;
 }
 
@@ -120,8 +123,6 @@ export interface RegulatoryWorkflowState {
 	steps: {
 		sourceProcessing: WorkflowStepState;
 		synthesis: WorkflowStepState;
-		enrichment: WorkflowStepState;
-		approval: WorkflowStepState;
 		reporting: WorkflowStepState;
 		email: WorkflowStepState;
 	};
@@ -140,8 +141,7 @@ export interface RegulatoryBriefingParams {
 	until?: string;
 	sources: Array<"MFDS" | "ICH" | "KONECT">;
 	purpose: "weekly-briefing" | "regulatory-check" | "cra-learning";
-	includeRag: boolean;
-	requireApproval: boolean;
+	emailRecipient?: string;
 	sendEmail: boolean;
 }
 

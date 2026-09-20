@@ -17,14 +17,6 @@ export function createInitialWorkflowState(): RegulatoryWorkflowState {
 				status: "pending",
 			},
 
-			enrichment: {
-				status: "pending",
-			},
-
-			approval: {
-				status: "pending",
-			},
-
 			reporting: {
 				status: "pending",
 			},

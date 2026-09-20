@@ -3,17 +3,20 @@ import {
 	type AgentWorkflowEvent,
 	type AgentWorkflowStep,
 } from "agents/workflows";
+import { getAgentByName } from "agents";
 import type { CraAssistantAgent } from "../index.ts";
 import type {
 	RegulatoryBriefing,
 	RegulatoryBriefingParams,
 	RegulatoryWorkflowProgress,
+	RegulatoryWorkflowState,
 	SourceWorkflowResult,
+	WorkflowStepState,
 } from "../types/workflow.ts";
 import { createInitialWorkflowState } from "../helpers/createInitialWorkflowState.ts";
 import { buildRegulatoryBriefing } from "../helpers/buildRegulatoryBriefing.ts";
 import { selectBriefingItems } from "../helpers/selectBriefingItems.ts";
-import { getAgentByName } from "agents";
+import { sendEmail } from "../services/emailDelivery.ts";
 
 export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 	CraAssistantAgent,
@@ -25,21 +28,68 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 		step: AgentWorkflowStep,
 	) {
 		const params = event.payload;
-
 		const startedAt = new Date().toISOString();
+
+		const selectedSourceCount = Math.max(params.sources.length, 1);
+		let processedSourceCount = 0;
+
+		/*
+		 * IMPORTANT:
+		 * workflow business state is accumulated locally during a run.
+		 *
+		 * step.mergeAgentState() is used only to publish this canonical state.
+		 * We intentionally do not rebuild nested `steps` / `sources` from
+		 * this.agent.getState() because that snapshot can lag behind the most
+		 * recent workflow merge and cause completed steps to temporarily fall
+		 * back to their initial `pending` state.
+		 */
+		let workflowState: RegulatoryWorkflowState = {
+			...createInitialWorkflowState(),
+			stage: "initializing",
+			progress: 0,
+			startedAt,
+		};
+
+		const publishWorkflowState = async (
+			patch: Partial<RegulatoryWorkflowState> = {},
+		) => {
+			workflowState = {
+				...workflowState,
+				...patch,
+			};
+
+			/*
+			 * Preserve framework/runtime-owned fields such as workflowId,
+			 * while our local workflowState remains authoritative for the
+			 * actual workflow business state.
+			 */
+			await step.mergeAgentState({
+				regulatoryWorkflow: {
+					...this.agent.getState().regulatoryWorkflow,
+					...workflowState,
+				},
+			});
+		};
+
+		const nextSourceProgress = () => {
+			processedSourceCount += 1;
+
+			const stepProgress = Math.min(
+				processedSourceCount / selectedSourceCount,
+				1,
+			);
+
+			return {
+				stepProgress,
+				overallProgress: 0.1 + stepProgress * 0.65,
+			};
+		};
 
 		// =====================================================
 		// 1. Initialize
 		// =====================================================
 
-		await step.mergeAgentState({
-			regulatoryWorkflow: {
-				...createInitialWorkflowState(),
-				stage: "initializing",
-				progress: 0,
-				startedAt,
-			},
-		});
+		await publishWorkflowState();
 
 		await this.reportProgress({
 			stage: "initializing",
@@ -55,23 +105,18 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 		// collect → normalize → source-level analysis
 		// =====================================================
 
-		await step.mergeAgentState({
-			regulatoryWorkflow: {
-				...this.agent.getState().regulatoryWorkflow,
+		const sourceProcessingStartedAt = new Date().toISOString();
 
-				stage: "sourceProcessing",
-
-				progress: 0.1,
-
-				steps: {
-					...this.agent.getState().regulatoryWorkflow.steps,
-
-					sourceProcessing: {
-						status: "running",
-						message: "Processing regulatory sources",
-						progress: 0,
-						startedAt: new Date().toISOString(),
-					},
+		await publishWorkflowState({
+			stage: "sourceProcessing",
+			progress: 0.1,
+			steps: {
+				...workflowState.steps,
+				sourceProcessing: {
+					status: "running",
+					message: "Processing regulatory sources",
+					progress: 0,
+					startedAt: sourceProcessingStartedAt,
 				},
 			},
 		});
@@ -93,7 +138,6 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 					{
 						timeout: "5 minutes",
 					},
-
 					async () => {
 						try {
 							return await this.agent.collectMFDSForWorkflow({
@@ -114,24 +158,31 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			: undefined;
 
 		if (mfdsResult) {
-			await step.mergeAgentState({
-				regulatoryWorkflow: {
-					...this.agent.getState().regulatoryWorkflow,
-					progress: 0.35,
-					sources: {
-						...this.agent.getState().regulatoryWorkflow.sources,
+			const sourceProgress = nextSourceProgress();
 
-						mfds: {
-							source: "MFDS",
-							fetched: mfdsResult.totalFetched,
-							candidates: mfdsResult.candidateCount,
-							relevant: mfdsResult.relevantCount,
-							completedAt: new Date().toISOString(),
-							items: mfdsResult.items,
-							warnings: mfdsResult.failures.map(
-								(failure) => `${failure.feedTitle}: ${failure.message}`,
-							),
-						},
+			await publishWorkflowState({
+				progress: sourceProgress.overallProgress,
+				sources: {
+					...workflowState.sources,
+					mfds: {
+						source: "MFDS",
+						fetched: mfdsResult.totalFetched,
+						candidates: mfdsResult.candidateCount,
+						relevant: mfdsResult.relevantCount,
+						completedAt: new Date().toISOString(),
+						items: mfdsResult.items,
+						warnings: mfdsResult.failures.map(
+							(failure) => `${failure.feedTitle}: ${failure.message}`,
+						),
+					},
+				},
+				steps: {
+					...workflowState.steps,
+					sourceProcessing: {
+						...workflowState.steps.sourceProcessing,
+						status: "running",
+						message: "MFDS processing completed",
+						progress: sourceProgress.stepProgress,
 					},
 				},
 			});
@@ -139,7 +190,7 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			await this.reportProgress({
 				stage: "sourceProcessing",
 				step: "sourceProcessing",
-				percent: 0.35,
+				percent: sourceProgress.overallProgress,
 				message:
 					`MFDS processing completed: ` +
 					`${mfdsResult.manifest?.newCount ?? 0} new, ` +
@@ -170,21 +221,29 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			: undefined;
 
 		if (ichResult) {
-			await step.mergeAgentState({
-				regulatoryWorkflow: {
-					...this.agent.getState().regulatoryWorkflow,
-					progress: 0.55,
-					sources: {
-						...this.agent.getState().regulatoryWorkflow.sources,
-						ich: {
-							source: "ICH",
-							fetched: ichResult.totalFetched,
-							candidates: ichResult.candidateCount,
-							relevant: ichResult.relevantCount,
-							completedAt: new Date().toISOString(),
-							items: ichResult.items,
-							warnings: ichResult.warnings,
-						},
+			const sourceProgress = nextSourceProgress();
+
+			await publishWorkflowState({
+				progress: sourceProgress.overallProgress,
+				sources: {
+					...workflowState.sources,
+					ich: {
+						source: "ICH",
+						fetched: ichResult.totalFetched,
+						candidates: ichResult.candidateCount,
+						relevant: ichResult.relevantCount,
+						completedAt: new Date().toISOString(),
+						items: ichResult.items,
+						warnings: ichResult.warnings,
+					},
+				},
+				steps: {
+					...workflowState.steps,
+					sourceProcessing: {
+						...workflowState.steps.sourceProcessing,
+						status: "running",
+						message: "ICH processing completed",
+						progress: sourceProgress.stepProgress,
 					},
 				},
 			});
@@ -192,7 +251,7 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			await this.reportProgress({
 				stage: "sourceProcessing",
 				step: "sourceProcessing",
-				percent: 0.55,
+				percent: sourceProgress.overallProgress,
 				message:
 					`ICH processing completed: ` +
 					`${ichResult.manifest?.newCount ?? 0} new, ` +
@@ -229,22 +288,30 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			: undefined;
 
 		if (konectResult) {
-			await step.mergeAgentState({
-				regulatoryWorkflow: {
-					...this.agent.getState().regulatoryWorkflow,
-					stage: "sourceProcessing",
-					progress: 0.7,
-					sources: {
-						...this.agent.getState().regulatoryWorkflow.sources,
-						konect: {
-							source: "KONECT",
-							fetched: konectResult.totalFetched,
-							candidates: konectResult.candidateCount,
-							relevant: konectResult.relevantCount,
-							completedAt: new Date().toISOString(),
-							items: konectResult.items,
-							warnings: konectResult.warnings,
-						},
+			const sourceProgress = nextSourceProgress();
+
+			await publishWorkflowState({
+				stage: "sourceProcessing",
+				progress: sourceProgress.overallProgress,
+				sources: {
+					...workflowState.sources,
+					konect: {
+						source: "KONECT",
+						fetched: konectResult.totalFetched,
+						candidates: konectResult.candidateCount,
+						relevant: konectResult.relevantCount,
+						completedAt: new Date().toISOString(),
+						items: konectResult.items,
+						warnings: konectResult.warnings,
+					},
+				},
+				steps: {
+					...workflowState.steps,
+					sourceProcessing: {
+						...workflowState.steps.sourceProcessing,
+						status: "running",
+						message: "KoNECT processing completed",
+						progress: sourceProgress.stepProgress,
 					},
 				},
 			});
@@ -252,7 +319,7 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			await this.reportProgress({
 				stage: "sourceProcessing",
 				step: "sourceProcessing",
-				percent: 0.7,
+				percent: sourceProgress.overallProgress,
 				message:
 					`KoNECT processing complete: ` +
 					`${konectResult.manifest?.newCount ?? 0} new, ` +
@@ -266,40 +333,45 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 		// Source processing complete
 		// -----------------------------------------------------
 
-		await step.mergeAgentState({
-			regulatoryWorkflow: {
-				...this.agent.getState().regulatoryWorkflow,
-				progress: 0.75,
-				steps: {
-					...this.agent.getState().regulatoryWorkflow.steps,
-
-					sourceProcessing: {
-						status: "completed",
-						message: "Regulatory source processing completed",
-						progress: 1,
-						completedAt: new Date().toISOString(),
-					},
+		await publishWorkflowState({
+			stage: "sourceProcessing",
+			progress: 0.75,
+			steps: {
+				...workflowState.steps,
+				sourceProcessing: {
+					...workflowState.steps.sourceProcessing,
+					status: "completed",
+					message: "Regulatory source processing completed",
+					progress: 1,
+					startedAt: sourceProcessingStartedAt,
+					completedAt: new Date().toISOString(),
 				},
 			},
+		});
+
+		await this.reportProgress({
+			stage: "sourceProcessing",
+			step: "sourceProcessing",
+			percent: 0.75,
+			message: "Regulatory source processing completed",
 		});
 
 		// =====================================================
 		// 3. Cross-source Synthesis
 		// =====================================================
 
-		await step.mergeAgentState({
-			regulatoryWorkflow: {
-				...this.agent.getState().regulatoryWorkflow,
-				stage: "synthesizing",
-				progress: 0.8,
-				steps: {
-					...this.agent.getState().regulatoryWorkflow.steps,
-					synthesis: {
-						status: "running",
-						message: "Synthesizing regulatory findings",
-						progress: 0,
-						startedAt: new Date().toISOString(),
-					},
+		const synthesisStartedAt = new Date().toISOString();
+
+		await publishWorkflowState({
+			stage: "synthesizing",
+			progress: 0.78,
+			steps: {
+				...workflowState.steps,
+				synthesis: {
+					status: "running",
+					message: "Synthesizing regulatory findings",
+					progress: 0,
+					startedAt: synthesisStartedAt,
 				},
 			},
 		});
@@ -307,7 +379,7 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 		await this.reportProgress({
 			stage: "synthesizing",
 			step: "synthesis",
-			percent: 0.8,
+			percent: 0.78,
 			message: "Synthesizing regulatory findings",
 		});
 
@@ -374,187 +446,44 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			},
 		);
 
-		await step.mergeAgentState({
-			regulatoryWorkflow: {
-				...this.agent.getState().regulatoryWorkflow,
-				progress: 1,
-				steps: {
-					...this.agent.getState().regulatoryWorkflow.steps,
-
-					synthesis: {
-						status: "completed",
-						message: "Regulatory findings synthesized",
-						progress: 1,
-						completedAt: new Date().toISOString(),
-					},
+		await publishWorkflowState({
+			progress: 0.84,
+			steps: {
+				...workflowState.steps,
+				synthesis: {
+					...workflowState.steps.synthesis,
+					status: "completed",
+					message: "Regulatory findings synthesized",
+					progress: 1,
+					startedAt: synthesisStartedAt,
+					completedAt: new Date().toISOString(),
 				},
 			},
 		});
 
-		// =====================================================
-		// 4. RAG Enrichment
-		// =====================================================
-
-		if (params.includeRag) {
-			await step.mergeAgentState({
-				regulatoryWorkflow: {
-					...this.agent.getState().regulatoryWorkflow,
-
-					stage: "enriching",
-
-					progress: 0.7,
-
-					steps: {
-						...this.agent.getState().regulatoryWorkflow.steps,
-
-						enrichment: {
-							status: "running",
-
-							message: "Enriching analysis with user regulatory documents",
-
-							progress: 0,
-
-							startedAt: new Date().toISOString(),
-						},
-					},
-				},
-			});
-
-			await this.reportProgress({
-				stage: "enriching",
-
-				step: "enrichment",
-
-				percent: 0.7,
-
-				message: "Enriching analysis with user regulatory documents",
-			});
-
-			await step.do(
-				"rag-enrichment",
-
-				async () => {
-					/*
-					 * RAG 연결 예정
-					 */
-
-					return {};
-				},
-			);
-
-			await step.mergeAgentState({
-				regulatoryWorkflow: {
-					...this.agent.getState().regulatoryWorkflow,
-					steps: {
-						...this.agent.getState().regulatoryWorkflow.steps,
-						enrichment: {
-							status: "completed",
-							message: "RAG enrichment completed",
-							progress: 1,
-							completedAt: new Date().toISOString(),
-						},
-					},
-				},
-			});
-		} else {
-			await step.mergeAgentState({
-				regulatoryWorkflow: {
-					...this.agent.getState().regulatoryWorkflow,
-					steps: {
-						...this.agent.getState().regulatoryWorkflow.steps,
-
-						enrichment: {
-							status: "skipped",
-							message: "RAG enrichment disabled",
-						},
-					},
-				},
-			});
-		}
+		await this.reportProgress({
+			stage: "synthesizing",
+			step: "synthesis",
+			percent: 0.84,
+			message: "Regulatory findings synthesized",
+		});
 
 		// =====================================================
-		// 5. Approval
+		// 4. Generate Briefing
 		// =====================================================
 
-		if (params.requireApproval) {
-			await step.mergeAgentState({
-				regulatoryWorkflow: {
-					...this.agent.getState().regulatoryWorkflow,
-					stage: "awaitingApproval",
-					progress: 0.75,
-					steps: {
-						...this.agent.getState().regulatoryWorkflow.steps,
+		const reportingStartedAt = new Date().toISOString();
 
-						approval: {
-							status: "running",
-							message: "Waiting for user approval",
-							startedAt: new Date().toISOString(),
-						},
-					},
-				},
-			});
-
-			await this.reportProgress({
-				stage: "awaitingApproval",
-				step: "approval",
-				percent: 0.75,
-				message: "Waiting for user approval before report delivery",
-			});
-
-			await this.waitForApproval(step, {
-				timeout: "7 days",
-			});
-
-			await step.mergeAgentState({
-				regulatoryWorkflow: {
-					...this.agent.getState().regulatoryWorkflow,
-
-					steps: {
-						...this.agent.getState().regulatoryWorkflow.steps,
-
-						approval: {
-							status: "completed",
-							message: "Approved",
-							progress: 1,
-							completedAt: new Date().toISOString(),
-						},
-					},
-				},
-			});
-		} else {
-			await step.mergeAgentState({
-				regulatoryWorkflow: {
-					...this.agent.getState().regulatoryWorkflow,
-
-					steps: {
-						...this.agent.getState().regulatoryWorkflow.steps,
-
-						approval: {
-							status: "skipped",
-							message: "Approval not required",
-						},
-					},
-				},
-			});
-		}
-
-		// =====================================================
-		// 6. Generate Briefing
-		// =====================================================
-
-		await step.mergeAgentState({
-			regulatoryWorkflow: {
-				...this.agent.getState().regulatoryWorkflow,
-				stage: "reporting",
-				progress: 0.8,
-				steps: {
-					...this.agent.getState().regulatoryWorkflow.steps,
-					reporting: {
-						status: "running",
-						message: "Generating weekly regulatory briefing",
-						progress: 0,
-						startedAt: new Date().toISOString(),
-					},
+		await publishWorkflowState({
+			stage: "reporting",
+			progress: 0.86,
+			steps: {
+				...workflowState.steps,
+				reporting: {
+					status: "running",
+					message: "Generating weekly regulatory briefing",
+					progress: 0,
+					startedAt: reportingStartedAt,
 				},
 			},
 		});
@@ -562,25 +491,19 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 		await this.reportProgress({
 			stage: "reporting",
 			step: "reporting",
-			percent: 0.8,
+			percent: 0.86,
 			message: "Generating weekly regulatory briefing",
 		});
 
-		const briefing = await step.do(
-			"generate-regulatory-briefing",
-
-			async () => {
-				return buildRegulatoryBriefing({
-					mainItems: selection.mainItems,
-					referenceItems: selection.referenceItems,
-
-					since: params.since,
-					until: params.until,
-
-					sources: synthesisResult.sources,
-				});
-			},
-		);
+		const briefing = await step.do("generate-regulatory-briefing", async () => {
+			return buildRegulatoryBriefing({
+				mainItems: selection.mainItems,
+				referenceItems: selection.referenceItems,
+				since: params.since,
+				until: params.until,
+				sources: synthesisResult.sources,
+			});
+		});
 
 		console.log("[RegulatoryBriefingWorkflow] generated briefing", {
 			summary: briefing.summary,
@@ -602,117 +525,33 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			stats: briefing.stats,
 		});
 
-		await step.mergeAgentState({
-			regulatoryWorkflow: {
-				...this.agent.getState().regulatoryWorkflow,
-				progress: 0.9,
-				briefing,
-				steps: {
-					...this.agent.getState().regulatoryWorkflow.steps,
-
-					reporting: {
-						status: "completed",
-						message: "Weekly regulatory briefing generated",
-						progress: 1,
-						completedAt: new Date().toISOString(),
-					},
+		await publishWorkflowState({
+			progress: 0.91,
+			briefing,
+			steps: {
+				...workflowState.steps,
+				reporting: {
+					...workflowState.steps.reporting,
+					status: "running",
+					message: "Briefing generated; saving to Workspace",
+					progress: 0.7,
+					startedAt: reportingStartedAt,
 				},
 			},
 		});
 
-		// =====================================================
-		// 7. Email Delivery
-		// =====================================================
-
-		if (params.sendEmail) {
-			await step.mergeAgentState({
-				regulatoryWorkflow: {
-					...this.agent.getState().regulatoryWorkflow,
-
-					stage: "emailing",
-
-					progress: 0.95,
-
-					steps: {
-						...this.agent.getState().regulatoryWorkflow.steps,
-
-						email: {
-							status: "running",
-
-							message: "Sending regulatory briefing email",
-
-							startedAt: new Date().toISOString(),
-						},
-					},
-				},
-			});
-
-			await this.reportProgress({
-				stage: "emailing",
-
-				step: "email",
-
-				percent: 0.95,
-
-				message: "Sending regulatory briefing email",
-			});
-
-			await step.do(
-				"send-email",
-
-				async () => {
-					/*
-					 * Mailing integration 예정.
-					 */
-
-					return {
-						sent: false,
-					};
-				},
-			);
-
-			await step.mergeAgentState({
-				regulatoryWorkflow: {
-					...this.agent.getState().regulatoryWorkflow,
-
-					steps: {
-						...this.agent.getState().regulatoryWorkflow.steps,
-
-						email: {
-							status: "completed",
-
-							message: "Email delivery completed",
-
-							progress: 1,
-
-							completedAt: new Date().toISOString(),
-						},
-					},
-				},
-			});
-		} else {
-			await step.mergeAgentState({
-				regulatoryWorkflow: {
-					...this.agent.getState().regulatoryWorkflow,
-
-					steps: {
-						...this.agent.getState().regulatoryWorkflow.steps,
-
-						email: {
-							status: "skipped",
-
-							message: "Email delivery disabled",
-						},
-					},
-				},
-			});
-		}
+		await this.reportProgress({
+			stage: "reporting",
+			step: "reporting",
+			percent: 0.91,
+			message: "Regulatory briefing generated; saving to Workspace",
+		});
 
 		// =====================================================
-		// 7.5 Save briefing to Workspace
+		// 5. Save briefing to Workspace
 		// =====================================================
 
-		const completedAt = new Date().toISOString();
+		const reportGeneratedAt = new Date().toISOString();
 
 		const briefingArtifact = await step.do(
 			"save-regulatory-briefing-to-workspace",
@@ -722,14 +561,13 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 					"default",
 				);
 
-				const reportDate = completedAt.slice(0, 10);
-
+				const reportDate = reportGeneratedAt.slice(0, 10);
 				const path = `/reports/regulatory/${reportDate}-regulatory-briefing.md`;
 
 				const content = this.buildBriefingMarkdown({
 					briefing,
 					startedAt,
-					completedAt,
+					completedAt: reportGeneratedAt,
 				});
 
 				await craAssistant.writeWorkspaceFile(path, content);
@@ -741,32 +579,177 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			},
 		);
 
-		// =====================================================
-		// 8. Complete
-		// =====================================================
-
-		await step.mergeAgentState({
-			regulatoryWorkflow: {
-				...this.agent.getState().regulatoryWorkflow,
-
-				stage: "completed",
-				progress: 1,
-				completedAt,
-				briefing,
-				artifact: {
-					path: briefingArtifact.path,
-					savedAt: briefingArtifact.savedAt,
+		await publishWorkflowState({
+			progress: 0.94,
+			artifact: {
+				path: briefingArtifact.path,
+				savedAt: briefingArtifact.savedAt,
+			},
+			steps: {
+				...workflowState.steps,
+				reporting: {
+					...workflowState.steps.reporting,
+					status: "completed",
+					message: "Regulatory briefing saved to Workspace",
+					progress: 1,
+					startedAt: reportingStartedAt,
+					completedAt: new Date().toISOString(),
 				},
 			},
 		});
 
 		await this.reportProgress({
-			stage: "completed",
-
+			stage: "reporting",
 			step: "reporting",
+			percent: 0.94,
+			message: "Regulatory briefing saved to Workspace",
+		});
 
+		// =====================================================
+		// 6. Email Delivery
+		// =====================================================
+
+		let emailStep: WorkflowStepState;
+
+		if (params.sendEmail && params.emailRecipient) {
+			const emailStartedAt = new Date().toISOString();
+
+			emailStep = {
+				status: "running",
+				message: "Sending regulatory briefing email",
+				startedAt: emailStartedAt,
+				recipient: params.emailRecipient,
+			};
+
+			await publishWorkflowState({
+				stage: "emailing",
+				progress: 0.96,
+				steps: {
+					...workflowState.steps,
+					email: emailStep,
+				},
+			});
+
+			await this.reportProgress({
+				stage: "emailing",
+				step: "email",
+				percent: 0.96,
+				message: "Sending regulatory briefing email",
+			});
+
+			const craAssistant = await getAgentByName(
+				this.env.CraAssistantAgent,
+				"default",
+			);
+
+			const draft = await craAssistant.createEmailDraftFromWorkspace(
+				briefingArtifact.path,
+				[params.emailRecipient],
+			);
+
+			const emailResult = await step.do("send-email", async () => {
+				try {
+					await sendEmail(this.env, draft);
+
+					return {
+						success: true as const,
+						sentAt: new Date().toISOString(),
+					};
+				} catch (error) {
+					return {
+						success: false as const,
+						error:
+							error instanceof Error ? error.message : "Email sending failed",
+					};
+				}
+			});
+
+			if (emailResult.success) {
+				emailStep = {
+					status: "completed",
+					startedAt: emailStartedAt,
+					message: "Email delivery completed",
+					progress: 1,
+					recipient: params.emailRecipient,
+					sentAt: emailResult.sentAt,
+					completedAt: new Date().toISOString(),
+				};
+			} else {
+				emailStep = {
+					status: "failed",
+					startedAt: emailStartedAt,
+					message: "Email delivery failed",
+					recipient: params.emailRecipient,
+					error: emailResult.error,
+					completedAt: new Date().toISOString(),
+				};
+			}
+
+			await publishWorkflowState({
+				stage: "emailing",
+				progress: 0.98,
+				steps: {
+					...workflowState.steps,
+					email: emailStep,
+				},
+			});
+
+			await this.reportProgress({
+				stage: "emailing",
+				step: "email",
+				percent: 0.98,
+				message: emailStep.message ?? "Email delivery finished",
+			});
+		} else {
+			emailStep = {
+				status: "skipped",
+				message: params.sendEmail
+					? "Email delivery skipped because no recipient was provided"
+					: "Email delivery disabled",
+				recipient: params.emailRecipient,
+			};
+
+			await publishWorkflowState({
+				progress: 0.98,
+				steps: {
+					...workflowState.steps,
+					email: emailStep,
+				},
+			});
+
+			await this.reportProgress({
+				stage: "reporting",
+				step: "email",
+				percent: 0.98,
+				message: emailStep.message ?? "Email delivery skipped",
+			});
+		}
+
+		// =====================================================
+		// 7. Complete
+		// =====================================================
+
+		const completedAt = new Date().toISOString();
+
+		await publishWorkflowState({
+			stage: "completed",
+			progress: 1,
+			completedAt,
+			briefing,
+			artifact: {
+				path: briefingArtifact.path,
+				savedAt: briefingArtifact.savedAt,
+			},
+			steps: {
+				...workflowState.steps,
+				email: emailStep,
+			},
+		});
+
+		await this.reportProgress({
+			stage: "completed",
+			step: params.sendEmail ? "email" : "reporting",
 			percent: 1,
-
 			message: "Regulatory briefing workflow completed",
 		});
 
@@ -788,10 +771,6 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 			completedAt,
 		};
 
-		/*
-		 * reportComplete는 모든 단계가 실제로 끝난 뒤
-		 * 한 번만 호출합니다.
-		 */
 		await step.reportComplete(result);
 
 		return result;
