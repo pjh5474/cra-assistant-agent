@@ -23,6 +23,13 @@
 	"ai": {
 		"binding": "AI",
 	},
+	"send_email": [
+		{
+			"name": "EMAIL",
+			"remote": true,
+			"allowed_sender_addresses": ["cra-assistant@warwarsn.online"],
+		},
+	],
 	"durable_objects": {
 		"bindings": [
 			{

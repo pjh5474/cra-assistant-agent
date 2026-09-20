@@ -25,6 +25,9 @@ import type {
 	CraAssistantAgent,
 	CraAssistantAgentState,
 } from "../worker/index.ts";
+import type { EmailDraft } from "shared/types/email.ts";
+import { EmailApprovalDialog } from "./components/email/EmailApprovalDialog.tsx";
+import { Button } from "@base-ui/react/button";
 
 const MAIN_TOOL_LABELS: Record<string, string> = {
 	searchRegulatoryDocuments: "Regulatory RAG Search",
@@ -75,6 +78,12 @@ export default function App() {
 	const [activeTab, setActiveTab] = useState<AppTab>("chat");
 
 	const showAside = activeTab === "chat" || activeTab === "workflow";
+
+	const [emailDraft, setEmailDraft] = useState<EmailDraft | null>(null);
+
+	const [emailApprovalOpen, setEmailApprovalOpen] = useState(false);
+
+	const [emailSending, setEmailSending] = useState(false);
 
 	const {
 		messages,
@@ -378,8 +387,54 @@ export default function App() {
 		await agent.stub.refreshFiles();
 	};
 
+	const testEmailApproval = async () => {
+		setEmailDraft({
+			to: ["test@example.com"],
+
+			subject: "Regulatory Briefing - 2026-09-20",
+
+			body: `안녕하세요.
+	
+	2026-09-20 Regulatory Briefing을 전달드립니다.
+	
+	감사합니다.`,
+
+			sourceArtifact: {
+				path: "/reports/regulatory/2026-09-20-regulatory-briefing.md",
+			},
+
+			createdAt: new Date().toISOString(),
+		});
+
+		setEmailApprovalOpen(true);
+	};
+
+	async function handleCreateEmailDraft(path: string) {
+		try {
+			const draft = await agent.stub.createEmailDraftFromWorkspace(path);
+
+			setEmailDraft(draft);
+
+			setEmailApprovalOpen(true);
+		} catch (error) {
+			console.error("[Email] draft creation failed", error);
+			throw error;
+		}
+	}
+
 	return (
 		<div className="min-h-screen bg-background text-foreground">
+			<EmailApprovalDialog
+				open={emailApprovalOpen}
+				draft={emailDraft}
+				sending={emailSending}
+				onOpenChange={setEmailApprovalOpen}
+				onApprove={async (approvedDraft) => {
+					console.log("[Email] approved", approvedDraft);
+
+					// 실제 Cloudflare Email 전송은 다음 단계에서 연결
+				}}
+			/>
 			<AppHeader
 				isBusy={isBusy}
 				isRecovering={isRecovering}
@@ -394,8 +449,8 @@ export default function App() {
 				}`}
 			>
 				<Tabs
-					defaultValue="chat"
 					className="min-w-0 w-full"
+					value={activeTab}
 					onValueChange={setActiveTab}
 				>
 					<TabsList>
@@ -449,7 +504,11 @@ export default function App() {
 					</TabsContent>
 
 					<TabsContent value="workflow" keepMounted>
-						<WorkflowPanel workflow={workflow} onRun={handleWorkflowStart} />
+						<WorkflowPanel
+							workflow={workflow}
+							onRun={handleWorkflowStart}
+							onOpenWorkspace={() => setActiveTab("workspace")}
+						/>
 					</TabsContent>
 
 					<TabsContent value="memory" keepMounted>
@@ -485,6 +544,7 @@ export default function App() {
 							agent={agent}
 							files={agent.state?.files ?? []}
 							onRefresh={handleWorkspaceRefresh}
+							onCreateEmailDraft={handleCreateEmailDraft}
 						/>
 					</TabsContent>
 				</Tabs>
@@ -499,6 +559,7 @@ export default function App() {
 								recentActivities={recentActivities}
 							/>
 						</div>
+						<Button onClick={testEmailApproval}>Test Email Approval</Button>
 					</aside>
 				)}
 			</main>

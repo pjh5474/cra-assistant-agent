@@ -750,12 +750,13 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 				...this.agent.getState().regulatoryWorkflow,
 
 				stage: "completed",
-
 				progress: 1,
-
 				completedAt,
-
 				briefing,
+				artifact: {
+					path: briefingArtifact.path,
+					savedAt: briefingArtifact.savedAt,
+				},
 			},
 		});
 

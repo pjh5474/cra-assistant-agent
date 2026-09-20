@@ -126,6 +126,11 @@ export interface RegulatoryWorkflowState {
 		email: WorkflowStepState;
 	};
 
+	artifact?: {
+		path: string;
+		savedAt: string;
+	};
+
 	briefing?: RegulatoryBriefing;
 	error?: string;
 }

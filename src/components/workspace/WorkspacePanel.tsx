@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import {
 	Download,
 	Loader2,
+	Mail,
 	RefreshCw,
 	Save,
 	Search,
@@ -26,12 +27,14 @@ type WorkspacePanelProps = {
 
 	files: WorkspaceFileEntry[];
 	onRefresh: () => Promise<void>;
+	onCreateEmailDraft: (path: string) => void | Promise<void>;
 };
 
 export function WorkspacePanel({
 	agent,
 	files,
 	onRefresh,
+	onCreateEmailDraft,
 }: WorkspacePanelProps) {
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
@@ -251,6 +254,21 @@ export function WorkspacePanel({
 								<Button variant="destructive" size="sm" onClick={deleteFile}>
 									<Trash2 className="mr-2 h-4 w-4" />
 									Delete
+								</Button>
+
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => {
+										if (!selectedPath) {
+											return;
+										}
+
+										onCreateEmailDraft(selectedPath);
+									}}
+								>
+									<Mail className="mr-2 h-4 w-4" />
+									Send Email
 								</Button>
 							</div>
 						</div>

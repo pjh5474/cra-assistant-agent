@@ -40,6 +40,7 @@ import { CRA_ASSISTANT_SOUL } from "./prompts/soul.ts";
 import { extractRegulatoryDocumentMetadata } from "./helpers/extractRegulatoryDocumentMetadata.ts";
 
 import type { SubagentActivity } from "../shared/types/agent.ts";
+import type { EmailDraft } from "../shared/types/email.ts";
 
 export {
 	MFDSRegulatoryAgent,
@@ -882,6 +883,42 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 		};
 	}
 	/* Workspace End */
+
+	/*
+	 * Email
+	 */
+	@callable()
+	async createEmailDraftFromWorkspace(path: string): Promise<EmailDraft> {
+		const result = await this.readWorkspaceFile(path);
+
+		const fileName =
+			path.split("/").filter(Boolean).at(-1) ?? "Workspace Report";
+
+		const reportDateMatch = fileName.match(/(\d{4}-\d{2}-\d{2})/);
+
+		const reportDate = reportDateMatch?.[1];
+
+		return {
+			to: [],
+
+			subject: reportDate
+				? `Regulatory Briefing - ${reportDate}`
+				: "Regulatory Briefing",
+
+			body:
+				`안녕하세요.\n\n` +
+				`Regulatory Briefing을 전달드립니다.\n\n` +
+				`${result.content}\n\n` +
+				`감사합니다.`,
+
+			sourceArtifact: {
+				path,
+			},
+
+			createdAt: new Date().toISOString(),
+		};
+	}
+	/* Email End */
 }
 
 export default {
