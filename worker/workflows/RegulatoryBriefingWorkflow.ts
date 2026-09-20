@@ -5,6 +5,7 @@ import {
 } from "agents/workflows";
 import type { CraAssistantAgent } from "../index.ts";
 import type {
+	RegulatoryBriefing,
 	RegulatoryBriefingParams,
 	RegulatoryWorkflowProgress,
 	SourceWorkflowResult,
@@ -12,6 +13,7 @@ import type {
 import { createInitialWorkflowState } from "../helpers/createInitialWorkflowState.ts";
 import { buildRegulatoryBriefing } from "../helpers/buildRegulatoryBriefing.ts";
 import { selectBriefingItems } from "../helpers/selectBriefingItems.ts";
+import { getAgentByName } from "agents";
 
 export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 	CraAssistantAgent,
@@ -707,10 +709,41 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 		}
 
 		// =====================================================
-		// 8. Complete
+		// 7.5 Save briefing to Workspace
 		// =====================================================
 
 		const completedAt = new Date().toISOString();
+
+		const briefingArtifact = await step.do(
+			"save-regulatory-briefing-to-workspace",
+			async () => {
+				const craAssistant = await getAgentByName(
+					this.env.CraAssistantAgent,
+					"default",
+				);
+
+				const reportDate = completedAt.slice(0, 10);
+
+				const path = `/reports/regulatory/${reportDate}-regulatory-briefing.md`;
+
+				const content = this.buildBriefingMarkdown({
+					briefing,
+					startedAt,
+					completedAt,
+				});
+
+				await craAssistant.writeWorkspaceFile(path, content);
+
+				return {
+					path,
+					savedAt: new Date().toISOString(),
+				};
+			},
+		);
+
+		// =====================================================
+		// 8. Complete
+		// =====================================================
 
 		await step.mergeAgentState({
 			regulatoryWorkflow: {
@@ -738,11 +771,18 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 
 		const result = {
 			briefing,
+
+			artifact: {
+				path: briefingArtifact.path,
+				savedAt: briefingArtifact.savedAt,
+			},
+
 			sources: {
 				mfds: mfdsResult,
 				ich: ichResult,
 				konect: konectResult,
 			},
+
 			startedAt,
 			completedAt,
 		};
@@ -754,5 +794,79 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 		await step.reportComplete(result);
 
 		return result;
+	}
+
+	private buildBriefingMarkdown({
+		briefing,
+		startedAt,
+		completedAt,
+	}: {
+		briefing: RegulatoryBriefing;
+		startedAt: string;
+		completedAt: string;
+	}): string {
+		const lines: string[] = [];
+
+		lines.push("---");
+		lines.push("type: report");
+		lines.push("title: Regulatory Briefing");
+		lines.push("status: final");
+		lines.push("source: regulatory-briefing-workflow");
+		lines.push(`startedAt: ${startedAt}`);
+		lines.push(`completedAt: ${completedAt}`);
+		lines.push("---");
+		lines.push("");
+
+		lines.push("# Regulatory Briefing");
+		lines.push("");
+
+		if (briefing.summary) {
+			lines.push(briefing.summary);
+			lines.push("");
+		}
+
+		if (briefing.highlights?.length) {
+			lines.push("## Highlights");
+			lines.push("");
+
+			for (const item of briefing.highlights) {
+				lines.push(`### ${item.title}`);
+				lines.push("");
+
+				if (item.summary) {
+					lines.push(item.summary);
+					lines.push("");
+				}
+
+				if (item.craImpact) {
+					lines.push("**CRA Impact**");
+					lines.push("");
+					lines.push(item.craImpact);
+					lines.push("");
+				}
+
+				if (item.url) {
+					lines.push(`Source: ${item.url}`);
+					lines.push("");
+				}
+			}
+		}
+
+		if (briefing.references?.length) {
+			lines.push("## References");
+			lines.push("");
+
+			for (const item of briefing.references) {
+				lines.push(`- ${item.title}`);
+
+				if (item.url) {
+					lines.push(`  - ${item.url}`);
+				}
+			}
+
+			lines.push("");
+		}
+
+		return lines.join("\n");
 	}
 }

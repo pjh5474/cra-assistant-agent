@@ -2,11 +2,12 @@ import { useMemo, useState } from "react";
 
 import {
 	Download,
-	FileText,
 	Loader2,
 	RefreshCw,
 	Save,
+	Search,
 	Trash2,
+	X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
 import type { WorkspaceFileEntry } from "@/types/workspace";
+import { buildWorkspaceTree } from "@/lib/workspace";
+import { TreeNode } from "./TreeNode";
+import { Input } from "@/components/ui/input";
 
 type WorkspacePanelProps = {
 	agent: {
@@ -37,12 +41,25 @@ export function WorkspacePanel({
 
 	const [saving, setSaving] = useState(false);
 
-	const fileEntries = useMemo(
-		() =>
-			files
-				.filter((file) => file.type === "file")
-				.sort((a, b) => a.path.localeCompare(b.path)),
-		[files],
+	const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
+		new Set(),
+	);
+
+	const [searchQuery, setSearchQuery] = useState("");
+
+	const filteredFiles = useMemo(() => {
+		const query = searchQuery.trim().toLowerCase();
+
+		if (!query) {
+			return files;
+		}
+
+		return files.filter((file) => file.path.toLowerCase().includes(query));
+	}, [files, searchQuery]);
+
+	const workspaceTree = useMemo(
+		() => buildWorkspaceTree(filteredFiles),
+		[filteredFiles],
 	);
 
 	async function openFile(path: string) {
@@ -61,6 +78,11 @@ export function WorkspacePanel({
 			setLoading(false);
 		}
 	}
+
+	const totalFileCount = useMemo(
+		() => files.filter((file) => file.type === "file").length,
+		[files],
+	);
 
 	async function saveFile() {
 		if (!selectedPath) {
@@ -97,6 +119,20 @@ export function WorkspacePanel({
 		await onRefresh();
 	}
 
+	function toggleFolder(path: string) {
+		setCollapsedFolders((current) => {
+			const next = new Set(current);
+
+			if (next.has(path)) {
+				next.delete(path);
+			} else {
+				next.add(path);
+			}
+
+			return next;
+		});
+	}
+
 	return (
 		<div className="grid h-full grid-cols-[280px_minmax(0,1fr)] gap-4">
 			<div className="flex min-h-0 flex-col rounded-lg border">
@@ -105,7 +141,7 @@ export function WorkspacePanel({
 						<div className="font-medium">Workspace</div>
 
 						<div className="text-xs text-muted-foreground">
-							{fileEntries.length} files
+							{totalFileCount} files
 						</div>
 					</div>
 
@@ -114,35 +150,56 @@ export function WorkspacePanel({
 					</Button>
 				</div>
 
+				<div className="border-b px-3 py-2">
+					<div className="relative">
+						<Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+
+						<Input
+							placeholder="Search files..."
+							value={searchQuery}
+							onChange={(event) => setSearchQuery(event.target.value)}
+							className="h-8 bg-muted/40 pr-8 pl-8 text-xs"
+						/>
+
+						{searchQuery ? (
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon-xs"
+								className="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground"
+								onClick={() => setSearchQuery("")}
+								aria-label="Clear search"
+							>
+								<X />
+							</Button>
+						) : null}
+					</div>
+				</div>
+
 				<div className="min-h-0 flex-1 overflow-y-auto p-2">
-					{fileEntries.length === 0 ? (
+					{totalFileCount === 0 ? (
 						<div className="p-4 text-sm text-muted-foreground">
 							No workspace files yet.
 						</div>
 					) : (
-						<div className="space-y-1">
-							{fileEntries.map((file) => (
-								<button
-									key={file.path}
-									type="button"
-									onClick={() => openFile(file.path)}
-									className={`flex w-full items-start gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted ${
-										selectedPath === file.path ? "bg-muted" : ""
-									}`}
-								>
-									<FileText className="mt-0.5 h-4 w-4 shrink-0" />
-
-									<div className="min-w-0">
-										<div className="truncate font-medium">
-											{file.path.split("/").at(-1)}
-										</div>
-
-										<div className="truncate text-xs text-muted-foreground">
-											{file.path}
-										</div>
-									</div>
-								</button>
-							))}
+						<div className="space-y-0.5">
+							{workspaceTree.length === 0 ? (
+								<div className="p-4 text-sm text-muted-foreground">
+									No workspace files yet.
+								</div>
+							) : (
+								workspaceTree.map((node) => (
+									<TreeNode
+										key={node.path}
+										node={node}
+										depth={0}
+										selectedPath={selectedPath}
+										collapsedFolders={collapsedFolders}
+										onToggleFolder={toggleFolder}
+										onOpenFile={openFile}
+									/>
+								))
+							)}
 						</div>
 					)}
 				</div>
@@ -191,7 +248,7 @@ export function WorkspacePanel({
 									Save
 								</Button>
 
-								<Button variant="outline" size="sm" onClick={deleteFile}>
+								<Button variant="destructive" size="sm" onClick={deleteFile}>
 									<Trash2 className="mr-2 h-4 w-4" />
 									Delete
 								</Button>
