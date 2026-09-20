@@ -1,7 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgent, useAgentToolEvents } from "agents/react";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
-import { Activity } from "lucide-react";
+import {
+	Activity,
+	BookOpen,
+	Brain,
+	CalendarClock,
+	FolderTree,
+	MessageSquare,
+	Workflow,
+} from "lucide-react";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { AgentOverview } from "@/components/agents/AgentOverview";
 import { CurrentActivityCard } from "@/components/agents/CurrentActivityCard";
@@ -29,6 +37,11 @@ import type { EmailDraft } from "shared/types/email.ts";
 import { EmailApprovalDialog } from "./components/email/EmailApprovalDialog.tsx";
 import { toast } from "sonner";
 import { EMAIL_APPROVAL_STORAGE_KEY, MAIN_TOOL_LABELS } from "./constants.ts";
+import type {
+	RegulatoryScheduleItem,
+	RegulatorySchedulePayload,
+} from "shared/types/schedule.ts";
+import { SchedulePanel } from "./components/schedule/SchedulePanel.tsx";
 
 function stringifyActivityPreview(value: unknown): string | undefined {
 	if (value === undefined || value === null) {
@@ -522,6 +535,28 @@ export default function App() {
 		}
 	}
 
+	const handleCreateRegulatorySchedule = useCallback(
+		async (cron: string, payload: RegulatorySchedulePayload) => {
+			return agent.stub.createRegulatorySchedule(cron, payload);
+		},
+		[agent],
+	);
+
+	const handleListRegulatorySchedules = useCallback(async (): Promise<
+		RegulatoryScheduleItem[]
+	> => {
+		return agent.stub.listRegulatorySchedules() as Promise<
+			RegulatoryScheduleItem[]
+		>;
+	}, [agent]);
+
+	const handleCancelRegulatorySchedule = useCallback(
+		async (scheduleId: string) => {
+			return agent.stub.cancelRegulatorySchedule(scheduleId);
+		},
+		[agent],
+	);
+
 	return (
 		<div className="min-h-screen bg-background text-foreground">
 			<EmailApprovalDialog
@@ -556,11 +591,30 @@ export default function App() {
 					onValueChange={setActiveTab}
 				>
 					<TabsList>
-						<TabsTrigger value="chat">Chat</TabsTrigger>
-						<TabsTrigger value="workflow">Regulatory Workflow</TabsTrigger>
-						<TabsTrigger value="memory">Agent Memory</TabsTrigger>
-						<TabsTrigger value="knowledge">Knowledge Base</TabsTrigger>
-						<TabsTrigger value="workspace">Workspace</TabsTrigger>
+						<TabsTrigger value="chat">
+							<MessageSquare className="mr-2 h-4 w-4" />
+							Chat
+						</TabsTrigger>
+						<TabsTrigger value="workflow">
+							<Workflow className="mr-2 h-4 w-4" />
+							Workflow
+						</TabsTrigger>
+						<TabsTrigger value="schedules">
+							<CalendarClock className="mr-2 h-4 w-4" />
+							Schedules
+						</TabsTrigger>
+						<TabsTrigger value="memory">
+							<Brain className="mr-2 h-4 w-4" />
+							Agent Memory
+						</TabsTrigger>
+						<TabsTrigger value="knowledge">
+							<BookOpen className="mr-2 h-4 w-4" />
+							Knowledge Base
+						</TabsTrigger>
+						<TabsTrigger value="workspace">
+							<FolderTree className="mr-2 h-4 w-4" />
+							Workspace
+						</TabsTrigger>
 					</TabsList>
 
 					<TabsContent value="chat" className="space-y-6">
@@ -611,6 +665,14 @@ export default function App() {
 							workflow={workflow}
 							onRun={handleWorkflowStart}
 							onOpenWorkspace={() => setActiveTab("workspace")}
+						/>
+					</TabsContent>
+
+					<TabsContent value="schedules" className="mt-4">
+						<SchedulePanel
+							onCreate={handleCreateRegulatorySchedule}
+							onList={handleListRegulatorySchedules}
+							onCancel={handleCancelRegulatorySchedule}
 						/>
 					</TabsContent>
 

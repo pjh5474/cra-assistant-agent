@@ -27,3 +27,15 @@ export const WORKFLOW_STAGE_LABELS: Record<string, string> = {
 	completed: "Completed",
 	error: "Error",
 };
+
+export const MINUTES_PER_DAY = 24 * 60;
+
+export const SCHEDULE_DAYS = [
+	{ value: 0, label: "Sunday" },
+	{ value: 1, label: "Monday" },
+	{ value: 2, label: "Tuesday" },
+	{ value: 3, label: "Wednesday" },
+	{ value: 4, label: "Thursday" },
+	{ value: 5, label: "Friday" },
+	{ value: 6, label: "Saturday" },
+] as const;

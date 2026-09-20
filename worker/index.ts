@@ -41,7 +41,9 @@ import { extractRegulatoryDocumentMetadata } from "./helpers/extractRegulatoryDo
 
 import type { SubagentActivity } from "../shared/types/agent.ts";
 import type { EmailDraft } from "../shared/types/email.ts";
+import { weeklyToCron } from "../shared/utils/regulatorySchedule.ts";
 import { sendEmail } from "./services/emailDelivery.ts";
+import type { RegulatorySchedulePayload } from "../shared/types/schedule.ts";
 
 export {
 	MFDSRegulatoryAgent,
@@ -356,6 +358,122 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 							"Email draft prepared. User approval is required before sending.",
 
 						draft,
+					};
+				},
+			}),
+
+			scheduleRegulatoryBriefing: tool({
+				description: `
+				Create a recurring weekly regulatory briefing schedule. Use when the user explicitly asks to schedule, automate, or regularly run a regulatory briefing. Times are interpreted in Asia/Seoul unless the user explicitly specifies another timezone. Never invent an email recipient.
+
+				For schedule creation:
+				- Interpret ordinary user times in Asia/Seoul unless another timezone is explicitly specified.
+				- Do not invent recipient email addresses.
+				- Do not create a schedule unless the user clearly requests recurring or future automation.
+				- Use MFDS, ICH, and KONECT by default when the user says "regulatory briefing" without specifying sources.
+				- When email delivery is requested, require an explicit recipient.
+				`.trim(),
+
+				inputSchema: z.object({
+					dayOfWeek: z
+						.number()
+						.int()
+						.min(0)
+						.max(6)
+						.describe(
+							"Day of week: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday",
+						),
+
+					time: z
+						.string()
+						.regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+						.describe(
+							"Time in HH:mm 24-hour format, interpreted as Asia/Seoul time",
+						),
+
+					sources: z
+						.array(z.enum(["MFDS", "ICH", "KONECT"]))
+						.min(1)
+						.default(["MFDS", "ICH", "KONECT"]),
+
+					sendEmail: z.boolean().default(false),
+
+					emailRecipient: z.email().optional(),
+				}),
+
+				execute: async ({
+					dayOfWeek,
+					time,
+					sources,
+					sendEmail,
+					emailRecipient,
+				}) => {
+					if (sendEmail && !emailRecipient) {
+						return {
+							success: false,
+							error:
+								"Email delivery was requested but no recipient was provided.",
+						};
+					}
+
+					const cron = weeklyToCron(dayOfWeek, time);
+
+					const schedule = await this.createRegulatorySchedule(cron, {
+						sources,
+						purpose: "weekly-briefing",
+						sendEmail,
+						emailRecipient: sendEmail ? emailRecipient : undefined,
+						timezone: "Asia/Seoul",
+					});
+
+					return {
+						success: true,
+						schedule,
+						dayOfWeek,
+						time,
+						timezone: "Asia/Seoul",
+					};
+				},
+			}),
+
+			getRegulatorySchedules: tool({
+				description: `
+				List the currently active regulatory briefing schedules.
+				- Always use this tool when the user asks what schedules currently exist, are active, are registered, or are scheduled.
+				- The tool result is the authoritative current state.
+				- Do not rely on conversation history, memory, or previously created schedules when answering current schedule status.
+				- Only report schedules returned by this tool.
+				`.trim(),
+
+				inputSchema: z.object({}),
+
+				execute: async () => {
+					return this.listRegulatorySchedules();
+				},
+			}),
+
+			removeRegulatorySchedule: tool({
+				description: `
+				Cancel an existing regulatory briefing schedule.
+				- After cancellation, do not treat the cancelled schedule as active.
+				- If the user later asks for current schedules, use the schedule listing tool again.
+				`.trim(),
+
+				inputSchema: z.object({
+					scheduleId: z
+						.string()
+						.describe("Exact schedule ID returned from the schedule list"),
+				}),
+
+				execute: async ({ scheduleId }) => {
+					await this.cancelRegulatorySchedule(scheduleId);
+
+					const schedules = await this.listRegulatorySchedules();
+
+					return {
+						success: true,
+						cancelledScheduleId: scheduleId,
+						activeSchedules: schedules,
 					};
 				},
 			}),
@@ -960,6 +1078,64 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 		};
 	}
 	/* Email End */
+
+	/*
+	 * Schedules
+	 */
+
+	async runScheduledRegulatoryBriefing(payload: RegulatorySchedulePayload) {
+		console.log("[Scheduler] triggered", {
+			at: new Date().toISOString(),
+			payload,
+		});
+
+		const now = new Date();
+
+		const until = now.toISOString();
+
+		const since = new Date(
+			now.getTime() - 7 * 24 * 60 * 60 * 1000,
+		).toISOString();
+
+		const workflowId = await this.startRegulatoryBriefingWorkflow({
+			since,
+			until,
+			sources: payload.sources,
+			purpose: payload.purpose,
+			sendEmail: payload.sendEmail,
+			emailRecipient: payload.emailRecipient,
+		});
+
+		return {
+			workflowId,
+		};
+	}
+
+	@callable()
+	async createRegulatorySchedule(
+		cron: string,
+		payload: RegulatorySchedulePayload,
+	) {
+		return this.schedule(cron, "runScheduledRegulatoryBriefing", payload);
+	}
+
+	@callable()
+	async listRegulatorySchedules() {
+		const schedules = await this.listSchedules({
+			type: "cron",
+		});
+
+		return schedules.filter(
+			(schedule) => schedule.callback === "runScheduledRegulatoryBriefing",
+		);
+	}
+
+	@callable()
+	async cancelRegulatorySchedule(scheduleId: string) {
+		return this.cancelSchedule(scheduleId);
+	}
+
+	/* Schedules End */
 }
 
 export default {
