@@ -20,7 +20,6 @@ export function MessageBubble({
 	if (textParts.length === 0 && uniqueRuns.length === 0) {
 		return null;
 	}
-	console.log(message);
 
 	return (
 		<div
