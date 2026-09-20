@@ -4,7 +4,6 @@ import {
 	routeAgentRequest,
 	type AgentToolProgressSnapshot,
 } from "agents";
-import { agentTool } from "agents/agent-tools";
 import type { AgentToolRunInfo } from "agents/agent-tools";
 import type { ContextConfig } from "agents/context";
 import type { SkillSource } from "agents/skills";
@@ -538,128 +537,6 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	}
 
 	/* Sub-Agent End */
-
-	/*
-	 * ICH Regulatory Agent test Start
-	 */
-	// @callable()
-	// async testICHImplementation() {
-	// 	const collector = new ICHImplementationCollector();
-
-	// 	const result = await collector.collect({
-	// 		partyId: 30,
-	// 		// guidelineId: 72,
-	// 	});
-
-	// 	console.log("[ICH TEST RESULT]", JSON.stringify(result, null, 2));
-
-	// 	return result;
-	// }
-
-	// @callable()
-	// async testICHEfficacyPage() {
-	// 	const response = await fetch(
-	// 		"https://www.ich.org/page/efficacy-guidelines",
-	// 	);
-
-	// 	const html = await response.text();
-
-	// 	const result = {
-	// 		status: response.status,
-	// 		hasE6R3: html.includes("E6(R3)"),
-	// 		hasDocumentPdf: html.includes("document-pdf"),
-	// 		hasConsolidatedGuideline: html.includes("Consolidated Guideline"),
-	// 		length: html.length,
-	// 	};
-
-	// 	console.log("[ICH Efficacy Test]", result);
-
-	// 	const collector = new ICHGuidelineCollector();
-
-	// 	const efficacyResult = await collector.collect();
-
-	// 	const e6r3 = efficacyResult.guidelines.find(
-	// 		(item) => item.displayCode === "E6(R3)",
-	// 	);
-
-	// 	console.log("[ICH Efficacy Test - E6(R3)]", e6r3);
-
-	// 	return {
-	// 		pageTest: result,
-	// 		collectorTest: {
-	// 			totalFetched: efficacyResult.totalFetched,
-	// 			totalReturned: efficacyResult.totalReturned,
-	// 			failures: efficacyResult.failures,
-	// 			e6r3,
-	// 		},
-	// 	};
-	// }
-
-	/* ICH Regulatory Agent test End */
-
-	/*
-	 * KoNECT Regulatory Agent test Start
-	 */
-
-	// @callable()
-	// async testKoNECTCollector() {
-	// 	const collector = new KoNECTCollector();
-
-	// 	const result = await collector.collect({
-	// 		since: "2026-09-01",
-	// 		until: "2026-09-30",
-	// 		includeCourses: true,
-	// 		includeNoticeTypes: ["general", "education", "certification"],
-	// 	});
-
-	// 	console.log("[KoNECT TEST RESULT]", JSON.stringify(result, null, 2));
-
-	// 	return result;
-	// }
-
-	// @callable()
-	// async testKoNECTSubAgent() {
-	// 	console.log("[CraAssistantAgent] testKoNECTSubAgent start");
-
-	// 	using konect = await this.dynamicAgents.get(
-	// 		KoNECTRegulatoryAgent,
-	// 		"konect-regulatory",
-	// 	);
-
-	// 	const result = await konect.collectAndAnalyzeForWorkflow({
-	// 		since: "2026-09-01",
-	// 		until: "2026-09-30",
-	// 		includeCourses: true,
-	// 		includeNoticeTypes: ["general", "education", "certification"],
-	// 		includeIrrelevant: false,
-	// 	});
-
-	// 	console.log("[CraAssistantAgent] testKoNECTSubAgent complete", {
-	// 		totalFetched: result.totalFetched,
-	// 		candidateCount: result.candidateCount,
-	// 		relevantCount: result.relevantCount,
-	// 		warnings: result.warnings,
-	// 	});
-
-	// 	return result;
-	// }
-
-	/* KoNECT Regulatory Agent test End */
-
-	/*
-	 * Manifest Store test Start
-	 */
-	// @callable()
-	// async testMFDSManifestStore() {
-	// 	const mfds = await this.dynamicAgents.get(
-	// 		MFDSRegulatoryAgent,
-	// 		"mfds-regulatory",
-	// 	);
-
-	// 	return await mfds.testManifestStore();
-	// }
-
-	/* Manifest Store test End */
 
 	/*
 	 * Regulatory Memory Store
