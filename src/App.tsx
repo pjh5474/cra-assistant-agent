@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAgent, useAgentToolEvents } from "agents/react";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
 import { Activity } from "lucide-react";
@@ -9,7 +9,7 @@ import { SubagentSummary } from "@/components/agents/SubagentSummary";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { WorkflowPanel } from "@/components/workflow/WorkflowPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { isToolUIPart } from "ai";
+import { getToolName, isToolUIPart } from "ai";
 import type { WorkflowRunParams } from "@/types/workflows";
 import { activityFromRun, normalizeChatActivity } from "./lib/subagent.ts";
 import { AgentMemoryPanel } from "./components/memory/AgentMemoryPanel.tsx";
@@ -27,7 +27,6 @@ import type {
 } from "../worker/index.ts";
 import type { EmailDraft } from "shared/types/email.ts";
 import { EmailApprovalDialog } from "./components/email/EmailApprovalDialog.tsx";
-import { Button } from "@base-ui/react/button";
 import { toast } from "sonner";
 
 const MAIN_TOOL_LABELS: Record<string, string> = {
@@ -85,6 +84,8 @@ export default function App() {
 	const [emailApprovalOpen, setEmailApprovalOpen] = useState(false);
 
 	const [emailSending, setEmailSending] = useState(false);
+
+	const handledEmailDrafts = useRef<Set<string>>(new Set());
 
 	const {
 		messages,
@@ -248,6 +249,43 @@ export default function App() {
 
 	const currentActivity = activityFromRun(latestRegulatoryRun);
 
+	useEffect(() => {
+		for (const message of messages) {
+			for (const part of message.parts ?? []) {
+				if (!isToolUIPart(part)) {
+					continue;
+				}
+				if (getToolName(part) !== "prepareEmailDraft") {
+					continue;
+				}
+				if (part.state !== "output-available") {
+					continue;
+				}
+				if (handledEmailDrafts.current.has(part.toolCallId)) {
+					continue;
+				}
+				const output = part.output as {
+					type?: string;
+					draft?: EmailDraft;
+				};
+				if (output.type !== "email_approval_required" || !output.draft) {
+					continue;
+				}
+
+				handledEmailDrafts.current.add(part.toolCallId);
+
+				console.log("[Email Approval] draft detected", {
+					toolCallId: part.toolCallId,
+					draft: output.draft,
+				});
+
+				setEmailDraft(output.draft);
+
+				setEmailApprovalOpen(true);
+			}
+		}
+	}, [messages]);
+
 	function handleSend(text: string) {
 		setWasStopped(false);
 
@@ -388,31 +426,9 @@ export default function App() {
 		await agent.stub.refreshFiles();
 	};
 
-	const testEmailApproval = async () => {
-		setEmailDraft({
-			to: ["test@example.com"],
-
-			subject: "Regulatory Briefing - 2026-09-20",
-
-			body: `안녕하세요.
-	
-	2026-09-20 Regulatory Briefing을 전달드립니다.
-	
-	감사합니다.`,
-
-			sourceArtifact: {
-				path: "/reports/regulatory/2026-09-20-regulatory-briefing.md",
-			},
-
-			createdAt: new Date().toISOString(),
-		});
-
-		setEmailApprovalOpen(true);
-	};
-
-	async function handleCreateEmailDraft(path: string) {
+	async function handleCreateEmailDraft(path: string, to: string[]) {
 		try {
-			const draft = await agent.stub.createEmailDraftFromWorkspace(path);
+			const draft = await agent.stub.createEmailDraftFromWorkspace(path, to);
 
 			setEmailDraft(draft);
 
@@ -601,7 +617,6 @@ export default function App() {
 								recentActivities={recentActivities}
 							/>
 						</div>
-						<Button onClick={testEmailApproval}>Test Email Approval</Button>
 					</aside>
 				)}
 			</main>

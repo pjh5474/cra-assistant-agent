@@ -27,7 +27,7 @@ type WorkspacePanelProps = {
 
 	files: WorkspaceFileEntry[];
 	onRefresh: () => Promise<void>;
-	onCreateEmailDraft: (path: string) => void | Promise<void>;
+	onCreateEmailDraft: (path: string, to: string[]) => void | Promise<void>;
 };
 
 export function WorkspacePanel({
@@ -264,7 +264,7 @@ export function WorkspacePanel({
 											return;
 										}
 
-										onCreateEmailDraft(selectedPath);
+										onCreateEmailDraft(selectedPath, []);
 									}}
 								>
 									<Mail className="mr-2 h-4 w-4" />

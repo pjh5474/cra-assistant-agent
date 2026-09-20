@@ -280,8 +280,9 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 			}),
 
 			searchRegulatoryDocuments: tool({
-				description:
-					"Search the curated regulatory knowledge base, including ICH GCP and other authoritative regulatory documents. Use this for questions about guideline content, requirements, principles, responsibilities, monitoring, informed consent, data governance, and other regulatory topics.",
+				description: `
+				Search the curated regulatory knowledge base, including ICH GCP and other authoritative regulatory documents. Use this for questions about guideline content, requirements, principles, responsibilities, monitoring, informed consent, data governance, and other regulatory topics.
+				`.trim(),
 
 				inputSchema: z.object({
 					query: z
@@ -318,6 +319,43 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 								.filter(Boolean)
 								.join(" — "),
 						})),
+					};
+				},
+			}),
+
+			prepareEmailDraft: tool({
+				description: `
+				Prepare an email draft from a Workspace artifact. 
+				Use this when the user asks to email, send, share, or deliver a saved Workspace report, note, comparison, or log. 
+				This tool only prepares a draft for user approval and MUST NOT send the email.
+
+				If the user explicitly provides one or more recipient email addresses,
+				include them in the \`to\` field exactly as provided.
+
+				Do not invent recipient addresses.
+				If no recipient address was provided, leave \`to\` empty so the user can fill it in during approval.
+				`.trim(),
+
+				inputSchema: z.object({
+					path: z.string().describe("Exact Workspace artifact path"),
+					to: z
+						.array(z.email())
+						.default([])
+						.describe(
+							"Email recipients explicitly provided by the user. Leave empty if no recipient was provided.",
+						),
+				}),
+
+				execute: async ({ path, to }) => {
+					const draft = await this.createEmailDraftFromWorkspace(path, to);
+
+					return {
+						type: "email_approval_required",
+
+						message:
+							"Email draft prepared. User approval is required before sending.",
+
+						draft,
 					};
 				},
 			}),
@@ -889,7 +927,10 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	 * Email
 	 */
 	@callable()
-	async createEmailDraftFromWorkspace(path: string): Promise<EmailDraft> {
+	async createEmailDraftFromWorkspace(
+		path: string,
+		to: string[],
+	): Promise<EmailDraft> {
 		const result = await this.readWorkspaceFile(path);
 
 		const fileName =
@@ -900,7 +941,7 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 		const reportDate = reportDateMatch?.[1];
 
 		return {
-			to: [],
+			to,
 
 			subject: reportDate
 				? `Regulatory Briefing - ${reportDate}`
