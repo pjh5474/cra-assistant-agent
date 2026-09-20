@@ -2,6 +2,10 @@ import type { MFDSFeed } from "./types/mfds.ts";
 
 export const SUB_AGENT_MODEL = "@cf/zai-org/glm-4.7-flash";
 
+export const RAG_EMBEDDING_MODEL = "@cf/baai/bge-m3";
+
+export const RAG_SKIP_HEADINGS = new Set(["Metadata", "Contents"]);
+
 export const MAX_RANGE_DAYS = 30;
 
 export const MFDS_FEEDS: readonly MFDSFeed[] = [

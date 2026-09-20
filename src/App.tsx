@@ -18,6 +18,26 @@ import type { AgentMemorySnapshot } from "./types/agent-memory.ts";
 import { AgentActivityPanel } from "./components/activity/AgentActivityPanel.tsx";
 import { mapAgentToolActivities } from "./lib/agent-activity.ts";
 
+const MAIN_TOOL_LABELS: Record<string, string> = {
+	searchRegulatoryDocuments: "Regulatory RAG Search",
+	searchRegulatoryMemory: "Regulatory Memory Search",
+	listRecentRegulatoryChanges: "Recent Regulatory Changes",
+	getRegulatoryAnalysis: "Regulatory Analysis Lookup",
+};
+
+function stringifyActivityPreview(value: unknown): string | undefined {
+	if (value === undefined || value === null) {
+		return undefined;
+	}
+
+	try {
+		const text = typeof value === "string" ? value : JSON.stringify(value);
+		return text.length > 180 ? `${text.slice(0, 177)}...` : text;
+	} catch {
+		return String(value);
+	}
+}
+
 export default function App() {
 	const agent = useAgent<any, CraAssistantAgentState>({
 		agent: "CraAssistantAgent",
@@ -51,18 +71,75 @@ export default function App() {
 	});
 
 	const { runningActivities, recentActivities } = useMemo(() => {
-		const activities = mapAgentToolActivities(agentTools);
+		const subAgentActivities = mapAgentToolActivities(agentTools);
+		const mainToolActivities: ReturnType<typeof mapAgentToolActivities> = [];
+
+		let order = 1_000_000;
+
+		for (const message of messages) {
+			for (const part of message.parts) {
+				if (!isToolUIPart(part)) {
+					continue;
+				}
+
+				const toolName = part.type.replace(/^tool-/, "");
+				const displayName = MAIN_TOOL_LABELS[toolName];
+
+				// Only surface CraAssistantAgent tools that are useful for
+				// RAG / regulatory-memory observability. Sub-agent tool calls
+				// continue to come from useAgentToolEvents().
+				if (!displayName) {
+					continue;
+				}
+
+				const toolState = part.state;
+
+				const activityStatus =
+					toolState === "output-available"
+						? "completed"
+						: toolState === "output-error" || toolState === "output-denied"
+							? "error"
+							: "running";
+
+				const input =
+					"input" in part ? (part as { input?: unknown }).input : undefined;
+
+				const errorText =
+					"errorText" in part &&
+					typeof (part as { errorText?: unknown }).errorText === "string"
+						? (part as { errorText: string }).errorText
+						: undefined;
+
+				mainToolActivities.push({
+					id: `main-tool:${part.toolCallId}`,
+					agentType: "CraAssistantAgent",
+					displayName,
+					status: activityStatus,
+					inputPreview: stringifyActivityPreview(input),
+					tools: [],
+					error: errorText,
+					order: order++,
+				});
+			}
+		}
+
+		const activities = [...subAgentActivities, ...mainToolActivities];
+
+		const deduped = Array.from(
+			new Map(activities.map((activity) => [activity.id, activity])).values(),
+		);
 
 		return {
-			runningActivities: activities.filter(
-				(activity) => activity.status === "running",
-			),
+			runningActivities: deduped
+				.filter((activity) => activity.status === "running")
+				.sort((a, b) => b.order - a.order),
 
-			recentActivities: activities
+			recentActivities: deduped
 				.filter((activity) => activity.status !== "running")
-				.slice(0, 5),
+				.sort((a, b) => b.order - a.order)
+				.slice(0, 8),
 		};
-	}, [agentTools]);
+	}, [agentTools, messages]);
 
 	const isBusy = isStreaming || isRecovering || status === "submitted";
 

@@ -1,6 +1,7 @@
 import { Think, skills } from "@cloudflare/think";
 import {
 	callable,
+	getAgentByName,
 	routeAgentRequest,
 	type AgentToolProgressSnapshot,
 } from "agents";
@@ -13,6 +14,7 @@ import { createWorkersAI } from "workers-ai-provider";
 import { createExtensionTools } from "@cloudflare/think/tools/extensions";
 import { MFDSRegulatoryAgent } from "./agents/MFDSRegulatoryAgent.ts";
 import { ICHRegulatoryAgent } from "./agents/ICHRegulatoryAgent.ts";
+import { RegulatoryRAGAgent } from "./agents/RegulatoryRAGAgent.ts";
 import type {
 	MFDSWorkflowInput,
 	RegulatoryWorkflowProgress,
@@ -38,6 +40,7 @@ export {
 	RegulatoryBriefingWorkflow,
 	ICHRegulatoryAgent,
 	KoNECTRegulatoryAgent,
+	RegulatoryRAGAgent,
 };
 
 export type SubagentStatus = "idle" | "running" | "completed" | "error";
@@ -170,8 +173,8 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 		return `
 		You are the main CRA Assistant Agent.
 
-		For chat interactions, you currently have access only to stored regulatory
-		memory.
+		For chat interactions, you currently have access to stored regulatory
+		memory and curated regulatory document knowledge base.
 
 		You may use regulatory memory to:
 		- retrieve previous analyses
@@ -200,8 +203,26 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 
 		Do not invent information that is not present in regulatory memory.
 
-		When RAG becomes available, document-based regulatory Q&A will also be
-		handled through chat.
+		You have access to a curated regulatory document knowledge base through
+		searchRegulatoryDocuments.
+
+		Use searchRegulatoryDocuments when the user asks about the content,
+		requirements, principles, responsibilities, or interpretation of regulatory
+		guidelines such as ICH GCP.
+
+		The regulatory document search is semantic and may return English source
+		material for Korean queries.
+
+		Base regulatory answers on the retrieved source text when available.
+		Do not claim that a retrieved document says something that is not supported
+		by the returned passages.
+
+		When using retrieved regulatory documents, clearly identify the source using
+		the document title/version and section heading when available.
+
+		Do not use the regulatory document search to answer questions about recently
+		detected regulatory updates. Use regulatory memory for previously observed
+		changes instead.
 		`.trim();
 	}
 
@@ -312,6 +333,53 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 				},
 			}),
 
+			searchRegulatoryDocuments: tool({
+				description:
+					"Search the curated regulatory knowledge base, including ICH GCP and other authoritative regulatory documents. Use this for questions about guideline content, requirements, principles, responsibilities, monitoring, informed consent, data governance, and other regulatory topics.",
+
+				inputSchema: z.object({
+					query: z
+						.string()
+						.min(2)
+						.describe(
+							"Semantic search query for regulatory guidance. The query may be in Korean or English.",
+						),
+
+					topK: z.number().int().min(1).max(10).optional().default(5),
+				}),
+
+				execute: async ({ query, topK }) => {
+					const results = await this.searchRegulatoryDocuments(query, topK);
+
+					return {
+						query,
+						count: results.length,
+
+						results: results.map((result) => ({
+							documentId: result.documentId,
+
+							title: result.document.title,
+
+							authority: result.document.authority,
+
+							documentType: result.document.documentType,
+
+							version: result.document.version,
+
+							effectiveDate: result.document.effectiveDate,
+
+							heading: result.heading,
+
+							chunkIndex: result.chunkIndex,
+
+							score: result.score,
+
+							text: result.text,
+						})),
+					};
+				},
+			}),
+
 			...createExtensionTools({
 				manager: this.extensionManager!,
 			}),
@@ -326,10 +394,10 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 				provider: {
 					get: async () =>
 						`
-  You are a CRA-focused regulatory intelligence assistant.
-  
-  Prefer traceable official-source information, concise analysis,
-  and clear separation between collected facts and AI interpretation.
+				You are a CRA-focused regulatory intelligence assistant.
+				
+				Prefer traceable official-source information, concise analysis,
+				and clear separation between collected facts and AI interpretation.
 			  `.trim(),
 				},
 			},
@@ -772,13 +840,260 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	}
 
 	/* Regulatory Memory Store End */
+
+	/*
+	 * Regulatory RAG
+	 */
+	private async searchRegulatoryDocuments(query: string, topK = 5) {
+		const rag = await getAgentByName(
+			this.env.RegulatoryRAGAgent,
+			"regulatory-rag",
+		);
+
+		return rag.searchDocuments(query, topK);
+	}
+	/* Regulatory RAG End */
 }
 
 export default {
-	async fetch(request, env) {
+	async fetch(request: Request, env: Env): Promise<Response> {
+		const url = new URL(request.url);
+
+		if (request.method === "POST" && url.pathname === "/api/rag/documents") {
+			try {
+				const formData = await request.formData();
+
+				const file = formData.get("file");
+
+				if (!(file instanceof File)) {
+					return Response.json(
+						{
+							error: "file is required",
+						},
+						{
+							status: 400,
+						},
+					);
+				}
+
+				const title = formData.get("title");
+
+				const authority = formData.get("authority");
+
+				const documentType = formData.get("documentType");
+
+				const version = formData.get("version");
+
+				const effectiveDate = formData.get("effectiveDate");
+
+				if (typeof title !== "string" || !title.trim()) {
+					return Response.json(
+						{
+							error: "title is required",
+						},
+						{
+							status: 400,
+						},
+					);
+				}
+
+				if (typeof authority !== "string" || !authority.trim()) {
+					return Response.json(
+						{
+							error: "authority is required",
+						},
+						{
+							status: 400,
+						},
+					);
+				}
+
+				if (typeof documentType !== "string" || !documentType.trim()) {
+					return Response.json(
+						{
+							error: "documentType is required",
+						},
+						{
+							status: 400,
+						},
+					);
+				}
+
+				const buffer = await file.arrayBuffer();
+
+				const rag = await getAgentByName(
+					env.RegulatoryRAGAgent,
+					"regulatory-rag",
+				);
+
+				const result = await rag.ingestDocument(
+					buffer,
+					file.name,
+					file.type || "application/pdf",
+					{
+						title: title.trim(),
+						authority: authority as any,
+						documentType: documentType as any,
+						version:
+							typeof version === "string" && version.trim()
+								? version.trim()
+								: undefined,
+
+						effectiveDate:
+							typeof effectiveDate === "string" && effectiveDate.trim()
+								? effectiveDate.trim()
+								: undefined,
+					},
+				);
+
+				return Response.json(result);
+			} catch (error) {
+				console.error("[RAG Upload] failed", error);
+
+				return Response.json(
+					{
+						error:
+							error instanceof Error
+								? error.message
+								: "Unknown ingestion error",
+					},
+					{
+						status: 500,
+					},
+				);
+			}
+		}
+
+		if (request.method === "POST" && url.pathname === "/api/rag/search") {
+			try {
+				const body = await request.json<{
+					query?: string;
+					topK?: number;
+				}>();
+
+				if (!body.query?.trim()) {
+					return Response.json(
+						{
+							error: "query is required",
+						},
+						{
+							status: 400,
+						},
+					);
+				}
+
+				const rag = await getAgentByName(
+					env.RegulatoryRAGAgent,
+					"regulatory-rag",
+				);
+
+				const results = await rag.searchDocuments(body.query, body.topK ?? 5);
+
+				return Response.json({
+					query: body.query,
+					count: results.length,
+					results,
+				});
+			} catch (error) {
+				console.error("[RAG Search] failed", error);
+
+				return Response.json(
+					{
+						error:
+							error instanceof Error ? error.message : "Unknown search error",
+					},
+					{
+						status: 500,
+					},
+				);
+			}
+		}
+
+		if (request.method === "GET" && url.pathname === "/api/rag/chunks") {
+			const documentId = url.searchParams.get("documentId");
+
+			const limit = Number(url.searchParams.get("limit") ?? "10");
+
+			if (!documentId) {
+				return Response.json(
+					{
+						error: "documentId is required",
+					},
+					{
+						status: 400,
+					},
+				);
+			}
+
+			const rag = await getAgentByName(
+				env.RegulatoryRAGAgent,
+				"regulatory-rag",
+			);
+
+			const chunks = await rag.getChunkPreview(
+				documentId,
+				Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 50) : 10,
+			);
+
+			return Response.json({
+				documentId,
+				count: chunks.length,
+				chunks,
+			});
+		}
+
+		if (
+			request.method === "DELETE" &&
+			url.pathname.startsWith("/api/rag/documents/")
+		) {
+			try {
+				const documentId = url.pathname
+					.replace("/api/rag/documents/", "")
+					.trim();
+
+				if (!documentId) {
+					return Response.json(
+						{
+							error: "documentId is required",
+						},
+						{
+							status: 400,
+						},
+					);
+				}
+
+				const rag = await getAgentByName(
+					env.RegulatoryRAGAgent,
+					"regulatory-rag",
+				);
+
+				const result = await rag.deleteDocument(documentId);
+
+				if (result.status === "not_found") {
+					return Response.json(result, {
+						status: 404,
+					});
+				}
+
+				return Response.json(result);
+			} catch (error) {
+				console.error("[RAG Delete] failed", error);
+
+				return Response.json(
+					{
+						error:
+							error instanceof Error ? error.message : "Unknown delete error",
+					},
+					{
+						status: 500,
+					},
+				);
+			}
+		}
+
 		return (
 			(await routeAgentRequest(request, env)) ??
-			new Response("Not found", {
+			new Response(null, {
 				status: 404,
 			})
 		);

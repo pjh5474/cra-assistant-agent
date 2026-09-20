@@ -27,12 +27,20 @@
 				"class_name": "CraAssistantAgent",
 				"name": "CraAssistantAgent",
 			},
+			{
+				"name": "RegulatoryRAGAgent",
+				"class_name": "RegulatoryRAGAgent",
+			},
 		],
 	},
 	"migrations": [
 		{
 			"tag": "1",
 			"new_sqlite_classes": ["CraAssistantAgent"],
+		},
+		{
+			"tag": "2",
+			"new_sqlite_classes": ["RegulatoryRAGAgent"],
 		},
 	],
 	"r2_buckets": [
@@ -57,6 +65,13 @@
 			"name": "regulatory-briefing-workflow",
 			"binding": "REGULATORY_BRIEFING_WORKFLOW",
 			"class_name": "RegulatoryBriefingWorkflow",
+		},
+	],
+	"vectorize": [
+		{
+			"binding": "VECTORIZE",
+			"index_name": "cra-regulatory-rag",
+			"remote": true,
 		},
 	],
 	/**
