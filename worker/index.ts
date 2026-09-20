@@ -39,6 +39,8 @@ import { formatRegulatoryHeading } from "./helpers/formatRegulatoryHeading.ts";
 import { CRA_ASSISTANT_SOUL } from "./prompts/soul.ts";
 import { extractRegulatoryDocumentMetadata } from "./helpers/extractRegulatoryDocumentMetadata.ts";
 
+import type { SubagentActivity } from "../shared/types/agent.ts";
+
 export {
 	MFDSRegulatoryAgent,
 	RegulatoryBriefingWorkflow,
@@ -46,17 +48,6 @@ export {
 	KoNECTRegulatoryAgent,
 	RegulatoryRAGAgent,
 };
-
-export type SubagentStatus = "idle" | "running" | "completed" | "error";
-
-export interface SubagentActivity {
-	status: SubagentStatus;
-	phase?: string;
-	message?: string;
-	progress?: number;
-	runId?: string;
-	updatedAt: string;
-}
 
 export type CraAssistantAgentState = {
 	files: {
@@ -125,6 +116,8 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 		files: [],
 		subagents: {
 			mfds: {
+				source: "MFDS",
+				displayName: "MFDS",
 				status: "idle",
 				phase: undefined,
 				message: undefined,
@@ -133,6 +126,8 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 				updatedAt: new Date().toISOString(),
 			},
 			ich: {
+				source: "ICH",
+				displayName: "ICH",
 				status: "idle",
 				phase: undefined,
 				message: undefined,
@@ -141,6 +136,8 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 				updatedAt: new Date().toISOString(),
 			},
 			konect: {
+				source: "KONECT",
+				displayName: "KoNECT",
 				status: "idle",
 				phase: undefined,
 				message: undefined,
@@ -330,30 +327,6 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	}
 
 	/* State & Basic Functions End */
-
-	/*
-	 * File System Start
-	 */
-
-	async refreshFiles() {
-		const all = await this.workspace.glob("**/*");
-		this.setState({
-			...this.state,
-			files: all.map((file) => ({
-				path: file.path,
-				type: file.type === "file" ? "file" : "directory",
-				size: file.size,
-				updatedAt: file.updatedAt,
-			})),
-		});
-	}
-
-	@callable()
-	async readWorkspaceFile(path: string) {
-		return await this.workspace.readFile(path);
-	}
-
-	/* File System End */
 
 	/*
 	 * R2 skills catalog.
@@ -849,6 +822,66 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 		};
 	}
 	/* Regulatory RAG End */
+
+	/*
+	 * Workspace
+	 */
+
+	@callable()
+	async refreshFiles() {
+		const all = await this.workspace.glob("**/*");
+		this.setState({
+			...this.state,
+			files: all.map((file) => ({
+				path: file.path,
+				type: file.type === "file" ? "file" : "directory",
+				size: file.size,
+				updatedAt: file.updatedAt,
+			})),
+		});
+	}
+
+	@callable()
+	async listWorkspaceFiles(pattern = "**/*") {
+		const files = await this.workspace.glob(pattern);
+
+		return {
+			files,
+		};
+	}
+
+	@callable()
+	async readWorkspaceFile(path: string) {
+		const content = await this.workspace.readFile(path);
+
+		return {
+			path,
+			content,
+		};
+	}
+
+	@callable()
+	async writeWorkspaceFile(path: string, content: string) {
+		await this.workspace.writeFile(path, content);
+
+		return {
+			status: "saved",
+			path,
+		};
+	}
+
+	@callable()
+	async deleteWorkspaceFile(path: string) {
+		await this.workspace.rm(path, {
+			recursive: true,
+		});
+
+		return {
+			status: "deleted",
+			path,
+		};
+	}
+	/* Workspace End */
 }
 
 export default {
@@ -1173,6 +1206,40 @@ export default {
 		}
 
 		/* RAG Endpoints End */
+
+		/* Workspace Endpoints Start */
+		if (
+			request.method === "GET" &&
+			url.pathname === "/api/workspace/download"
+		) {
+			const path = url.searchParams.get("path");
+
+			if (!path) {
+				return Response.json(
+					{
+						error: "path is required",
+					},
+					{
+						status: 400,
+					},
+				);
+			}
+
+			const stub = await getAgentByName(env.CraAssistantAgent, "default");
+
+			const result = await stub.readWorkspaceFile(path);
+
+			const fileName =
+				path.split("/").filter(Boolean).at(-1) ?? "workspace-file.md";
+
+			return new Response(result.content, {
+				headers: {
+					"Content-Type": "text/markdown; charset=utf-8",
+					"Content-Disposition": `attachment; filename="${fileName}"`,
+				},
+			});
+		}
+		/* Workspace Endpoints End */
 
 		return (
 			(await routeAgentRequest(request, env)) ??

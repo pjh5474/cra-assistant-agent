@@ -10,7 +10,6 @@ import { AppHeader } from "@/components/layout/AppHeader";
 import { WorkflowPanel } from "@/components/workflow/WorkflowPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isToolUIPart } from "ai";
-import type { CraAssistantAgentState } from "@/types/agent";
 import type { WorkflowRunParams } from "@/types/workflows";
 import { activityFromRun, normalizeChatActivity } from "./lib/subagent.ts";
 import { AgentMemoryPanel } from "./components/memory/AgentMemoryPanel.tsx";
@@ -20,6 +19,12 @@ import { UserMemoryPanel } from "./components/memory/UserMemoryPanel.tsx";
 import { mapAgentToolActivities } from "./lib/agent-activity.ts";
 import type { RegulatoryDocumentSummary } from "./types/regulatory-rag.ts";
 import { KnowledgeBasePanel } from "./components/knowledge/KnowledgeBasePanel.tsx";
+import { WorkspacePanel } from "./components/workspace/WorkspacePanel.tsx";
+import type { AppTab } from "./types/app-tab.ts";
+import type {
+	CraAssistantAgent,
+	CraAssistantAgentState,
+} from "../worker/index.ts";
 
 const MAIN_TOOL_LABELS: Record<string, string> = {
 	searchRegulatoryDocuments: "Regulatory RAG Search",
@@ -42,7 +47,7 @@ function stringifyActivityPreview(value: unknown): string | undefined {
 }
 
 export default function App() {
-	const agent = useAgent<any, CraAssistantAgentState>({
+	const agent = useAgent<CraAssistantAgent, CraAssistantAgentState>({
 		agent: "CraAssistantAgent",
 		name: "default",
 	});
@@ -66,6 +71,10 @@ export default function App() {
 
 	const [regulatoryDocumentsLoading, setRegulatoryDocumentsLoading] =
 		useState(false);
+
+	const [activeTab, setActiveTab] = useState<AppTab>("chat");
+
+	const showAside = activeTab === "chat" || activeTab === "workflow";
 
 	const {
 		messages,
@@ -365,6 +374,10 @@ export default function App() {
 
 	const workflow = agent.state?.regulatoryWorkflow;
 
+	const handleWorkspaceRefresh = async () => {
+		await agent.stub.refreshFiles();
+	};
+
 	return (
 		<div className="min-h-screen bg-background text-foreground">
 			<AppHeader
@@ -375,13 +388,22 @@ export default function App() {
 				handleStop={handleStop}
 			/>
 
-			<main className="mx-auto grid max-w-7xl gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-				<Tabs defaultValue="chat" className="min-w-0 w-full">
+			<main
+				className={`mx-auto grid max-w-7xl gap-6 px-6 py-6 ${
+					showAside ? "lg:grid-cols-[minmax(0,1fr)_340px]" : "grid-cols-1"
+				}`}
+			>
+				<Tabs
+					defaultValue="chat"
+					className="min-w-0 w-full"
+					onValueChange={setActiveTab}
+				>
 					<TabsList>
 						<TabsTrigger value="chat">Chat</TabsTrigger>
 						<TabsTrigger value="workflow">Regulatory Workflow</TabsTrigger>
 						<TabsTrigger value="memory">Agent Memory</TabsTrigger>
 						<TabsTrigger value="knowledge">Knowledge Base</TabsTrigger>
+						<TabsTrigger value="workspace">Workspace</TabsTrigger>
 					</TabsList>
 
 					<TabsContent value="chat" className="space-y-6">
@@ -458,25 +480,27 @@ export default function App() {
 							onDeleted={handleRegulatoryDocumentsRefresh}
 						/>
 					</TabsContent>
+					<TabsContent value="workspace">
+						<WorkspacePanel
+							agent={agent}
+							files={agent.state?.files ?? []}
+							onRefresh={handleWorkspaceRefresh}
+						/>
+					</TabsContent>
 				</Tabs>
 
-				<aside className="hidden min-h-0 lg:block space-y-4">
-					<AgentOverview />
-					<CurrentActivityCard activity={currentActivity} />
-					<div className="sticky top-4">
-						<AgentActivityPanel
-							runningActivities={runningActivities}
-							recentActivities={recentActivities}
-						/>
-					</div>
-					{/* <Button
-						type="button"
-						variant="outline"
-						onClick={handleTestMFDSMemory}
-					>
-						Test MFDS Memory
-					</Button> */}
-				</aside>
+				{showAside && (
+					<aside className="hidden min-h-0 lg:block space-y-4">
+						<AgentOverview />
+						<CurrentActivityCard activity={currentActivity} />
+						<div className="sticky top-4">
+							<AgentActivityPanel
+								runningActivities={runningActivities}
+								recentActivities={recentActivities}
+							/>
+						</div>
+					</aside>
+				)}
 			</main>
 		</div>
 	);

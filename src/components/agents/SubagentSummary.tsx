@@ -2,7 +2,7 @@ import { Activity, Clock3, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatTime, statusLabel } from "@/lib/subagent";
-import type { SubagentActivity } from "@/types/agent";
+import type { SubagentActivity } from "../../../shared/types/agent.ts";
 
 interface SubagentSummaryProps {
 	name: string;
@@ -72,7 +72,7 @@ export function SubagentSummary({
 						<div className="flex items-center gap-1 text-[10px] text-muted-foreground">
 							<Clock3 className="h-3 w-3" />
 
-							{formatTime(state.updatedAt)}
+							{formatTime(new Date().toISOString())}
 						</div>
 					</div>
 				)}

@@ -1,9 +1,9 @@
-import type {
-	RegulatoryAgentSource,
-	SubagentActivity,
-	SubagentStatus,
-} from "@/types/agent";
+import type { RegulatoryAgentSource, SubagentStatus } from "@/types/agent";
 import type { AgentToolRunState } from "agents";
+import type {
+	RegulatorySource,
+	SubagentActivity,
+} from "../../shared/types/agent.ts";
 
 export function formatTime(value?: string) {
 	if (!value) {
@@ -98,7 +98,7 @@ export function activityFromRun(
 	const agentInfo = getSubagentInfo(run.agentType);
 
 	return {
-		source: agentInfo.source,
+		source: agentInfo.source as RegulatorySource,
 		displayName: agentInfo.displayName,
 		status,
 		phase: run.progress?.phase,

@@ -22,6 +22,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 import type { RegulatoryDocumentSummary } from "@/types/regulatory-rag";
+import type {
+	DeleteResponse,
+	MetadataPreviewResponse,
+	UploadResponse,
+} from "@/types/knowledge";
 
 type KnowledgeBasePanelProps = {
 	documents: RegulatoryDocumentSummary[];
@@ -77,7 +82,7 @@ export function KnowledgeBasePanel({
 				body: formData,
 			});
 
-			const result = await response.json();
+			const result = (await response.json()) as MetadataPreviewResponse;
 
 			if (!response.ok) {
 				throw new Error(result.error ?? "Metadata extraction failed");
@@ -85,23 +90,23 @@ export function KnowledgeBasePanel({
 
 			const metadata = result.metadata;
 
-			if (metadata.title) {
+			if (metadata?.title) {
 				setTitle(metadata.title);
 			}
 
-			if (metadata.authority) {
+			if (metadata?.authority) {
 				setAuthority(metadata.authority);
 			}
 
-			if (metadata.documentType) {
+			if (metadata?.documentType) {
 				setDocumentType(metadata.documentType);
 			}
 
-			if (metadata.version) {
+			if (metadata?.version) {
 				setVersion(metadata.version);
 			}
 
-			if (metadata.effectiveDate) {
+			if (metadata?.effectiveDate) {
 				setEffectiveDate(metadata.effectiveDate);
 			}
 
@@ -156,7 +161,7 @@ export function KnowledgeBasePanel({
 				body: formData,
 			});
 
-			const result = await response.json();
+			const result = (await response.json()) as UploadResponse;
 
 			if (!response.ok) {
 				throw new Error(result.error ?? "Upload failed");
@@ -210,7 +215,7 @@ export function KnowledgeBasePanel({
 				method: "DELETE",
 			});
 
-			const result = await response.json();
+			const result = (await response.json()) as DeleteResponse;
 
 			if (!response.ok) {
 				throw new Error(result.error ?? "Delete failed");
