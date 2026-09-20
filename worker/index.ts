@@ -41,6 +41,7 @@ import { extractRegulatoryDocumentMetadata } from "./helpers/extractRegulatoryDo
 
 import type { SubagentActivity } from "../shared/types/agent.ts";
 import type { EmailDraft } from "../shared/types/email.ts";
+import { buildEmailHtml } from "./helpers/buildHtml.ts";
 
 export {
 	MFDSRegulatoryAgent,
@@ -1277,6 +1278,91 @@ export default {
 			});
 		}
 		/* Workspace Endpoints End */
+
+		/* Email Endpoints Start */
+
+		if (request.method === "POST" && url.pathname === "/api/email/send") {
+			try {
+				const body = await request.json<{
+					to?: string[];
+					subject?: string;
+					body?: string;
+					sourceArtifact?: {
+						path?: string;
+					};
+				}>();
+
+				if (!Array.isArray(body.to) || body.to.length === 0) {
+					return Response.json(
+						{
+							error: "At least one recipient is required.",
+						},
+						{
+							status: 400,
+						},
+					);
+				}
+
+				if (!body.subject?.trim()) {
+					return Response.json(
+						{
+							error: "subject is required",
+						},
+						{
+							status: 400,
+						},
+					);
+				}
+
+				if (!body.body?.trim()) {
+					return Response.json(
+						{
+							error: "body is required",
+						},
+						{
+							status: 400,
+						},
+					);
+				}
+
+				const result = await env.EMAIL.send({
+					from: {
+						email: "cra-assistant@warwarsn.online",
+						name: "CRA Assistant",
+					},
+					to: body.to,
+					subject: body.subject.trim(),
+					text: body.body,
+					html: buildEmailHtml(body.body),
+				});
+
+				console.log("[Email] sent", {
+					to: body.to,
+					subject: body.subject,
+					sourceArtifact: body.sourceArtifact?.path,
+					result,
+				});
+
+				return Response.json({
+					status: "sent",
+					result,
+				});
+			} catch (error) {
+				console.error("[Email] send failed", error);
+
+				return Response.json(
+					{
+						error:
+							error instanceof Error ? error.message : "Email sending failed",
+					},
+					{
+						status: 500,
+					},
+				);
+			}
+		}
+
+		/* Email Endpoints End */
 
 		return (
 			(await routeAgentRequest(request, env)) ??

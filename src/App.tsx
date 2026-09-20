@@ -28,6 +28,7 @@ import type {
 import type { EmailDraft } from "shared/types/email.ts";
 import { EmailApprovalDialog } from "./components/email/EmailApprovalDialog.tsx";
 import { Button } from "@base-ui/react/button";
+import { toast } from "sonner";
 
 const MAIN_TOOL_LABELS: Record<string, string> = {
 	searchRegulatoryDocuments: "Regulatory RAG Search",
@@ -422,6 +423,51 @@ export default function App() {
 		}
 	}
 
+	async function handleApprovedEmailSend(draft: EmailDraft) {
+		setEmailSending(true);
+		try {
+			const response = await fetch("/api/email/send", {
+				method: "POST",
+
+				headers: {
+					"Content-Type": "application/json",
+				},
+
+				body: JSON.stringify({
+					to: draft.to,
+					subject: draft.subject,
+					body: draft.body,
+					sourceArtifact: draft.sourceArtifact,
+				}),
+			});
+
+			const result = (await response.json()) as {
+				status?: "sent";
+				error?: string;
+			};
+
+			if (!response.ok) {
+				throw new Error(result.error ?? "Email sending failed");
+			}
+
+			setEmailApprovalOpen(false);
+
+			setEmailDraft(null);
+
+			toast.success("Email sent", {
+				description: `Sent to ${draft.to.join(", ")}`,
+			});
+		} catch (error) {
+			console.error("[Email] sending failed", error);
+
+			toast.error("Failed to send email", {
+				description: error instanceof Error ? error.message : "Unknown error",
+			});
+		} finally {
+			setEmailSending(false);
+		}
+	}
+
 	return (
 		<div className="min-h-screen bg-background text-foreground">
 			<EmailApprovalDialog
@@ -429,11 +475,7 @@ export default function App() {
 				draft={emailDraft}
 				sending={emailSending}
 				onOpenChange={setEmailApprovalOpen}
-				onApprove={async (approvedDraft) => {
-					console.log("[Email] approved", approvedDraft);
-
-					// 실제 Cloudflare Email 전송은 다음 단계에서 연결
-				}}
+				onApprove={handleApprovedEmailSend}
 			/>
 			<AppHeader
 				isBusy={isBusy}
