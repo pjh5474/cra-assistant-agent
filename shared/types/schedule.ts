@@ -1,4 +1,6 @@
 export interface RegulatorySchedulePayload {
+	scheduleKey: string;
+
 	sources: Array<"MFDS" | "ICH" | "KONECT">;
 
 	purpose: "weekly-briefing" | "regulatory-check" | "cra-learning";

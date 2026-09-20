@@ -44,6 +44,7 @@ import type { EmailDraft } from "../shared/types/email.ts";
 import { weeklyToCron } from "../shared/utils/regulatorySchedule.ts";
 import { sendEmail } from "./services/emailDelivery.ts";
 import type { RegulatorySchedulePayload } from "../shared/types/schedule.ts";
+import { ScheduledRunHistoryStore } from "./stores/ScheduledRunHistoryStore.ts";
 
 export {
 	MFDSRegulatoryAgent,
@@ -579,6 +580,80 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 		return konect.collectAndAnalyzeForWorkflow(input);
 	}
 
+	async onWorkflowComplete(
+		workflowName: string,
+		instanceId: string,
+		result?: unknown,
+	) {
+		console.log("[Workflow] completed", {
+			workflowName,
+			instanceId,
+		});
+
+		/*
+		 * 다른 Workflow가 생길 수 있으므로
+		 * Regulatory Briefing만 처리
+		 */
+		if (workflowName !== "REGULATORY_BRIEFING_WORKFLOW") {
+			return;
+		}
+
+		const history = new ScheduledRunHistoryStore(this.env.HISTORY_DB);
+
+		const workflowResult = result as
+			| {
+					artifact?: {
+						path?: string;
+					};
+
+					email?: {
+						status?: string;
+						recipient?: string;
+						sentAt?: string;
+						error?: string;
+					};
+			  }
+			| undefined;
+
+		await history.completeRunByWorkflowId({
+			workflowId: instanceId,
+
+			completedAt: new Date().toISOString(),
+
+			artifactPath: workflowResult?.artifact?.path,
+
+			emailStatus: workflowResult?.email?.status,
+
+			emailRecipient: workflowResult?.email?.recipient,
+		});
+	}
+
+	async onWorkflowError(
+		workflowName: string,
+		instanceId: string,
+		error: string,
+	) {
+		console.error("[Workflow] failed", {
+			workflowName,
+			instanceId,
+			error,
+		});
+
+		if (workflowName !== "REGULATORY_BRIEFING_WORKFLOW") {
+			return;
+		}
+
+		const history = new ScheduledRunHistoryStore(this.env.HISTORY_DB);
+
+		await history.failRunByWorkflowId({
+			workflowId: instanceId,
+
+			completedAt: new Date().toISOString(),
+
+			error: error || "Regulatory briefing workflow failed",
+		});
+	}
+
 	override async onWorkflowProgress(
 		workflowName: string,
 		instanceId: string,
@@ -1084,39 +1159,140 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	 */
 
 	async runScheduledRegulatoryBriefing(payload: RegulatorySchedulePayload) {
-		console.log("[Scheduler] triggered", {
-			at: new Date().toISOString(),
+		console.log("[Scheduler] running scheduled regulatory briefing", {
 			payload,
 		});
 
-		const now = new Date();
+		const history = new ScheduledRunHistoryStore(this.env.HISTORY_DB);
 
-		const until = now.toISOString();
+		const startedAt = new Date().toISOString();
 
-		const since = new Date(
-			now.getTime() - 7 * 24 * 60 * 60 * 1000,
-		).toISOString();
+		/*
+		 * 동일 schedule occurrence의 중복 실행을 막기 위한 key.
+		 *
+		 * 현재 weekly scheduler이므로
+		 * KST 기준 실행 날짜를 occurrence key로 사용합니다.
+		 */
+		const scheduledFor = new Intl.DateTimeFormat("sv-SE", {
+			timeZone: payload.timezone ?? "Asia/Seoul",
+			year: "numeric",
+			month: "2-digit",
+			day: "2-digit",
+			hour: "2-digit",
+			minute: "2-digit",
+			hour12: false,
+		})
+			.format(new Date())
+			.replace(" ", "T");
 
-		const workflowId = await this.startRegulatoryBriefingWorkflow({
-			since,
-			until,
-			sources: payload.sources,
-			purpose: payload.purpose,
-			sendEmail: payload.sendEmail,
-			emailRecipient: payload.emailRecipient,
+		const runKey = `${payload.scheduleKey}:${scheduledFor}`;
+
+		const runId = crypto.randomUUID();
+
+		console.log("[Scheduler] triggered", {
+			runId,
+			runKey,
+			scheduleKey: payload.scheduleKey,
+			startedAt,
+			payload,
 		});
 
-		return {
-			workflowId,
-		};
+		/*
+		 * INSERT 성공 = 이번 occurrence의 최초 실행
+		 * UNIQUE(run_key) 충돌 = 이미 실행한 occurrence
+		 */
+		const started = await history.startRun({
+			id: runId,
+			runKey,
+			scheduleId: payload.scheduleKey,
+			scheduledFor,
+			startedAt,
+		});
+
+		if (!started) {
+			console.warn("[Scheduler] duplicate run skipped", {
+				runKey,
+				scheduleKey: payload.scheduleKey,
+			});
+
+			return {
+				skipped: true,
+				reason: "duplicate-run",
+				runKey,
+			};
+		}
+
+		try {
+			const now = new Date();
+
+			const until = now.toISOString();
+
+			const since = new Date(
+				now.getTime() - 7 * 24 * 60 * 60 * 1000,
+			).toISOString();
+
+			const { workflowId } = await this.startRegulatoryBriefingWorkflow({
+				since,
+				until,
+				sources: payload.sources,
+				purpose: payload.purpose,
+				sendEmail: payload.sendEmail,
+				emailRecipient: payload.emailRecipient,
+			});
+
+			/*
+			 * Workflow 시작에 성공했으므로
+			 * D1 history에 workflowId 연결
+			 */
+			await history.attachWorkflowId(runId, workflowId);
+
+			console.log("[Scheduler] workflow started", {
+				runId,
+				runKey,
+				workflowId,
+				since,
+				until,
+			});
+
+			return {
+				skipped: false,
+				runId,
+				runKey,
+				workflowId,
+			};
+		} catch (error) {
+			const message =
+				error instanceof Error
+					? error.message
+					: "Scheduled workflow start failed";
+
+			await history.failRun({
+				id: runId,
+				completedAt: new Date().toISOString(),
+				error: message,
+			});
+
+			console.error("[Scheduler] workflow start failed", {
+				runId,
+				runKey,
+				error,
+			});
+
+			throw error;
+		}
 	}
 
 	@callable()
 	async createRegulatorySchedule(
 		cron: string,
-		payload: RegulatorySchedulePayload,
+		payload: Omit<RegulatorySchedulePayload, "scheduleKey">,
 	) {
-		return this.schedule(cron, "runScheduledRegulatoryBriefing", payload);
+		const scheduleKey = crypto.randomUUID();
+
+		return this.schedule(cron, "runScheduledRegulatoryBriefing", {
+			...payload,
+			scheduleKey,
+		});
 	}
 
 	@callable()

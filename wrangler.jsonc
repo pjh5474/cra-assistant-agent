@@ -83,6 +83,14 @@
 			"remote": true,
 		},
 	],
+	"d1_databases": [
+		{
+			"binding": "HISTORY_DB",
+			"database_name": "cra-assistant-agent-d1",
+			"database_id": "2dbbb509-d59a-4c78-b11a-bba6dc1100b4",
+			"remote": true,
+		},
+	],
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

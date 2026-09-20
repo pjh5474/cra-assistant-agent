@@ -767,6 +767,13 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 				konect: konectResult,
 			},
 
+			email: {
+				status: emailStep.status,
+				recipient: emailStep.recipient,
+				sentAt: emailStep.sentAt,
+				error: emailStep.error,
+			},
+
 			startedAt,
 			completedAt,
 		};
