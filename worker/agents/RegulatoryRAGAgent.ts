@@ -2,12 +2,16 @@ import { Agent } from "agents";
 import { embed, embedMany } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import type {
+	RegulatoryDocumentAuthority,
 	RegulatoryDocumentMetadata,
+	RegulatoryDocumentSummary,
+	RegulatoryDocumentType,
 	RegulatoryRAGIngestResult,
 	RegulatoryRAGSearchResult,
 } from "../types/regulatory-rag.ts";
 import { hashBuffer } from "../helpers/hashBuffer.ts";
 import { RAG_EMBEDDING_MODEL, RAG_SKIP_HEADINGS } from "../constants.ts";
+import { extractPdfTextFallback } from "../helpers/extractPdfTextFallback.ts";
 
 interface MarkdownChunk {
 	heading?: string;
@@ -80,14 +84,14 @@ export class RegulatoryRAGAgent extends Agent<Env> {
 			original_name: string;
 			chunk_count: number;
 		}>`
-            SELECT
-              id,
-              original_name,
-              chunk_count
-            FROM rag_documents
-            WHERE content_hash = ${contentHash}
-            LIMIT 1
-          `;
+			SELECT
+				id,
+				original_name,
+				chunk_count
+			FROM rag_documents
+			WHERE content_hash = ${contentHash}
+			LIMIT 1
+		`;
 
 		if (existing) {
 			return {
@@ -100,93 +104,181 @@ export class RegulatoryRAGAgent extends Agent<Env> {
 
 		const documentId = crypto.randomUUID();
 
-		const markdown = await this.convertToMarkdown(
+		//
+		// 1. Primary extraction:
+		// Cloudflare AI.toMarkdown()
+		//
+		let extractedText = await this.convertToMarkdown(
 			originalName,
 			buffer,
 			fileType,
 		);
 
-		const chunks = this.splitMarkdownByHeading(markdown);
+		let extractionMode: "markdown" | "pdf-text" = "markdown";
+
+		console.log("[RegulatoryRAGAgent] markdown extraction", {
+			originalName,
+			length: extractedText.length,
+		});
+
+		//
+		// 2. Fallback:
+		// If toMarkdown produced only metadata/page headings
+		// or otherwise no meaningful body text,
+		// try unpdf text extraction.
+		//
+		if (!this.hasSearchableDocumentText(extractedText)) {
+			console.warn(
+				"[RegulatoryRAGAgent] Markdown extraction produced no searchable body text. Trying PDF text fallback.",
+				{
+					originalName,
+				},
+			);
+
+			const fallback = await extractPdfTextFallback(buffer);
+
+			if (!fallback.text || fallback.text.trim().length < 200) {
+				throw new Error(
+					"PDF conversion succeeded, but no searchable body text could be extracted " +
+						"using either Markdown conversion or PDF text extraction.",
+				);
+			}
+
+			extractedText = fallback.text.trim();
+
+			extractionMode = "pdf-text";
+
+			console.log("[RegulatoryRAGAgent] PDF text fallback succeeded", {
+				originalName,
+				totalPages: fallback.totalPages,
+				textLength: extractedText.length,
+			});
+		}
+
+		//
+		// 3. Chunking
+		//
+		let chunks: {
+			heading?: string;
+			text: string;
+		}[];
+
+		if (extractionMode === "markdown") {
+			chunks = this.splitMarkdownByHeading(extractedText);
+		} else {
+			//
+			// unpdf output is plain text,
+			// so do not force Markdown heading parsing.
+			//
+			chunks = this.splitSectionText(extractedText, 1200, 150).map((text) => ({
+				text,
+			}));
+		}
 
 		if (chunks.length === 0) {
 			throw new Error("Document conversion produced no searchable text.");
 		}
 
+		//
+		// 4. Build embedding input
+		//
 		const embeddingTexts = chunks.map((chunk) =>
 			chunk.heading ? `${chunk.heading}\n\n${chunk.text}` : chunk.text,
 		);
 
 		const embeddings = await this.embedChunks(embeddingTexts);
 
+		if (embeddings.length !== chunks.length) {
+			throw new Error(
+				`Embedding count mismatch: expected ${chunks.length}, received ${embeddings.length}.`,
+			);
+		}
+
 		const createdAt = Date.now();
 
+		//
+		// 5. Persist chunks + prepare vectors
+		//
 		const vectors = chunks.map((chunk, index) => {
 			const chunkId = crypto.randomUUID();
 
 			this.sql`
-                INSERT INTO rag_chunks (
-                    id,
-                    document_id,
-                    chunk_index,
-                    heading,
-                    text,
-                    created_at
-                )
-                VALUES (
-                    ${chunkId},
-                    ${documentId},
-                    ${index},
-                    ${chunk.heading ?? null},
-                    ${chunk.text},
-                    ${createdAt}
-                )
-            `;
+						INSERT INTO rag_chunks (
+							id,
+							document_id,
+							chunk_index,
+							heading,
+							text,
+							created_at
+						)
+						VALUES (
+							${chunkId},
+							${documentId},
+							${index},
+							${chunk.heading ?? null},
+							${chunk.text},
+							${createdAt}
+						)
+					`;
 
 			return {
 				id: chunkId,
+
 				values: embeddings[index],
+
 				metadata: {
 					documentId,
+
 					authority: metadata.authority,
+
 					documentType: metadata.documentType,
+
 					version: metadata.version ?? "",
+
 					chunkIndex: index,
 				},
 			};
 		});
 
+		//
+		// 6. Vectorize
+		//
 		await this.env.VECTORIZE.upsert(vectors);
 
+		//
+		// 7. Persist document record
+		//
 		this.sql`
-          INSERT INTO rag_documents (
-            id,
-            original_name,
-            authority,
-            document_type,
-            title,
-            version,
-            effective_date,
-            content_hash,
-            chunk_count,
-            created_at
-          )
-          VALUES (
-            ${documentId},
-            ${originalName},
-            ${metadata.authority},
-            ${metadata.documentType},
-            ${metadata.title},
-            ${metadata.version ?? null},
-            ${metadata.effectiveDate ?? null},
-            ${contentHash},
-            ${chunks.length},
-            ${createdAt}
-          )
-        `;
+			INSERT INTO rag_documents (
+				id,
+				original_name,
+				authority,
+				document_type,
+				title,
+				version,
+				effective_date,
+				content_hash,
+				chunk_count,
+				created_at
+			)
+			VALUES (
+				${documentId},
+				${originalName},
+				${metadata.authority},
+				${metadata.documentType},
+				${metadata.title},
+				${metadata.version ?? null},
+				${metadata.effectiveDate ?? null},
+				${contentHash},
+				${chunks.length},
+				${createdAt}
+			)
+		`;
 
 		console.log("[RegulatoryRAGAgent] ingestion completed", {
 			documentId,
 			originalName,
+			extractionMode,
 			chunks: chunks.length,
 		});
 
@@ -219,11 +311,16 @@ export class RegulatoryRAGAgent extends Agent<Env> {
 		});
 
 		console.log("[RegulatoryRAGAgent] search", {
-			query: trimmed,
-			topK: safeTopK,
+			query,
+			topK,
+
 			matches: result.matches.map((match) => ({
 				id: match.id,
 				score: match.score,
+				documentId: match.metadata?.documentId,
+				version: match.metadata?.version,
+				authority: match.metadata?.authority,
+				chunkIndex: match.metadata?.chunkIndex,
 			})),
 		});
 
@@ -372,6 +469,45 @@ export class RegulatoryRAGAgent extends Agent<Env> {
 			documentId,
 			deletedChunks: chunkIds.length,
 		};
+	}
+
+	async listDocuments(): Promise<RegulatoryDocumentSummary[]> {
+		const rows = this.sql<{
+			id: string;
+			original_name: string;
+			authority: RegulatoryDocumentAuthority;
+			document_type: RegulatoryDocumentType;
+			title: string;
+			version: string | null;
+			effective_date: string | null;
+			chunk_count: number;
+			created_at: number;
+		}>`
+			SELECT
+				id,
+				original_name,
+				authority,
+				document_type,
+				title,
+				version,
+				effective_date,
+				chunk_count,
+				created_at
+			FROM rag_documents
+			ORDER BY created_at DESC
+		`;
+
+		return rows.map((row) => ({
+			id: row.id,
+			originalName: row.original_name,
+			authority: row.authority,
+			documentType: row.document_type,
+			title: row.title,
+			version: row.version,
+			effectiveDate: row.effective_date,
+			chunkCount: row.chunk_count,
+			createdAt: row.created_at,
+		}));
 	}
 
 	private async convertToMarkdown(
@@ -524,6 +660,18 @@ export class RegulatoryRAGAgent extends Agent<Env> {
 		});
 
 		return embedding;
+	}
+
+	private hasSearchableDocumentText(markdown: string): boolean {
+		const cleaned = markdown
+			.replace(/^#{1,6}\s+Metadata\s*$/gim, "")
+			.replace(/^#{1,6}\s+Contents\s*$/gim, "")
+			.replace(/^#{1,6}\s+Page\s+\d+\s*$/gim, "")
+			.replace(/^- .+?=.+$/gm, "")
+			.replace(/^#{1,6}\s+.+\.pdf\s*$/gim, "")
+			.trim();
+
+		return cleaned.length >= 200;
 	}
 
 	private splitSectionText(

@@ -18,6 +18,8 @@ import type { AgentMemorySnapshot } from "./types/agent-memory.ts";
 import { AgentActivityPanel } from "./components/activity/AgentActivityPanel.tsx";
 import { UserMemoryPanel } from "./components/memory/UserMemoryPanel.tsx";
 import { mapAgentToolActivities } from "./lib/agent-activity.ts";
+import type { RegulatoryDocumentSummary } from "./types/regulatory-rag.ts";
+import { KnowledgeBasePanel } from "./components/knowledge/KnowledgeBasePanel.tsx";
 
 const MAIN_TOOL_LABELS: Record<string, string> = {
 	searchRegulatoryDocuments: "Regulatory RAG Search",
@@ -57,6 +59,13 @@ export default function App() {
 	const [userMemory, setUserMemory] = useState("");
 	const [userMemoryLoading, setUserMemoryLoading] = useState(false);
 	const [userMemorySaving, setUserMemorySaving] = useState(false);
+
+	const [regulatoryDocuments, setRegulatoryDocuments] = useState<
+		RegulatoryDocumentSummary[]
+	>([]);
+
+	const [regulatoryDocumentsLoading, setRegulatoryDocumentsLoading] =
+		useState(false);
 
 	const {
 		messages,
@@ -332,6 +341,28 @@ export default function App() {
 		}
 	};
 
+	const handleRegulatoryDocumentsRefresh = async () => {
+		if (regulatoryDocumentsLoading) {
+			return;
+		}
+
+		setRegulatoryDocumentsLoading(true);
+
+		try {
+			const result = await agent.stub.getRegulatoryDocuments();
+
+			setRegulatoryDocuments(result.documents);
+
+			console.log("[App] regulatory documents loaded", {
+				count: result.documents.length,
+			});
+		} catch (error) {
+			console.error("[App] failed to load regulatory documents", error);
+		} finally {
+			setRegulatoryDocumentsLoading(false);
+		}
+	};
+
 	const workflow = agent.state?.regulatoryWorkflow;
 
 	return (
@@ -350,6 +381,7 @@ export default function App() {
 						<TabsTrigger value="chat">Chat</TabsTrigger>
 						<TabsTrigger value="workflow">Regulatory Workflow</TabsTrigger>
 						<TabsTrigger value="memory">Agent Memory</TabsTrigger>
+						<TabsTrigger value="knowledge">Knowledge Base</TabsTrigger>
 					</TabsList>
 
 					<TabsContent value="chat" className="space-y-6">
@@ -415,6 +447,16 @@ export default function App() {
 								onRefresh={handleMemoryRefresh}
 							/>
 						</div>
+					</TabsContent>
+
+					<TabsContent value="knowledge" keepMounted>
+						<KnowledgeBasePanel
+							documents={regulatoryDocuments}
+							loading={regulatoryDocumentsLoading}
+							onRefresh={handleRegulatoryDocumentsRefresh}
+							onUploaded={handleRegulatoryDocumentsRefresh}
+							onDeleted={handleRegulatoryDocumentsRefresh}
+						/>
 					</TabsContent>
 				</Tabs>
 

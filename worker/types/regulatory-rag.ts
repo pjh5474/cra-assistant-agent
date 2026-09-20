@@ -96,3 +96,41 @@ export interface RegulatoryRAGSearchResult {
 		effectiveDate?: string;
 	};
 }
+
+export interface RegulatoryDocumentSummary {
+	id: string;
+	originalName: string;
+	authority: RegulatoryDocumentAuthority;
+	documentType: RegulatoryDocumentType;
+	title: string;
+	version?: string | null;
+	effectiveDate?: string | null;
+	chunkCount: number;
+	createdAt: number;
+}
+
+export interface RegulatoryDocumentMetadataPreview {
+	title?: string;
+
+	authority?: "ICH" | "MFDS" | "KONECT" | "INTERNAL" | "OTHER";
+
+	documentType?:
+		| "GCP"
+		| "REGULATION"
+		| "GUIDELINE"
+		| "SOP"
+		| "TRAINING"
+		| "OTHER";
+
+	version?: string;
+
+	effectiveDate?: string;
+
+	confidence: {
+		title: number;
+		authority: number;
+		documentType: number;
+		version: number;
+		effectiveDate: number;
+	};
+}
