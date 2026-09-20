@@ -143,6 +143,9 @@ export interface RegulatoryBriefingParams {
 	purpose: "weekly-briefing" | "regulatory-check" | "cra-learning";
 	emailRecipient?: string;
 	sendEmail: boolean;
+
+	emailIdempotencyKey?: string;
+	scheduleId?: string;
 }
 
 export interface RegulatoryWorkflowProgress {
@@ -166,6 +169,8 @@ export interface StartRegulatoryBriefingInput {
 	purpose?: "weekly-briefing" | "regulatory-check" | "cra-learning";
 	emailRecipient?: string;
 	sendEmail?: boolean;
+	emailIdempotencyKey?: string;
+	scheduleId?: string;
 }
 
 export interface MFDSWorkflowInput {

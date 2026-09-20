@@ -9,6 +9,9 @@ export interface RegulatorySchedulePayload {
 	emailRecipient?: string;
 
 	timezone: string;
+
+	dayOfWeek: number;
+	localTime: string;
 }
 
 export interface RegulatorySchedule {
@@ -46,4 +49,25 @@ export interface RegulatoryScheduleItem {
 	type: "cron" | "scheduled" | "delayed" | "interval";
 
 	cron?: string;
+}
+
+export interface ScheduledRunHistoryItem {
+	id: string;
+	runKey: string;
+	scheduleId: string;
+
+	scheduledFor?: string;
+	workflowId?: string;
+
+	status: "running" | "completed" | "failed" | "skipped";
+
+	startedAt: string;
+	completedAt?: string;
+
+	artifactPath?: string;
+
+	emailStatus?: string;
+	emailRecipient?: string;
+
+	error?: string;
 }

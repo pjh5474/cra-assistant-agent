@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgent, useAgentToolEvents } from "agents/react";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
 import {
-	Activity,
 	BookOpen,
 	Brain,
 	CalendarClock,
@@ -13,13 +12,12 @@ import {
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { AgentOverview } from "@/components/agents/AgentOverview";
 import { CurrentActivityCard } from "@/components/agents/CurrentActivityCard";
-import { SubagentSummary } from "@/components/agents/SubagentSummary";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { WorkflowPanel } from "@/components/workflow/WorkflowPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getToolName, isToolUIPart } from "ai";
 import type { WorkflowRunParams } from "@/types/workflows";
-import { activityFromRun, normalizeChatActivity } from "./lib/subagent.ts";
+import { activityFromRun } from "./lib/subagent.ts";
 import { AgentMemoryPanel } from "./components/memory/AgentMemoryPanel.tsx";
 import type { AgentMemorySnapshot } from "./types/agent-memory.ts";
 import { AgentActivityPanel } from "./components/activity/AgentActivityPanel.tsx";
@@ -63,7 +61,6 @@ export default function App() {
 	});
 
 	const [input, setInput] = useState("");
-	const [wasStopped, setWasStopped] = useState(false);
 
 	const [memory, setMemory] = useState<AgentMemorySnapshot | undefined>(
 		undefined,
@@ -233,42 +230,6 @@ export default function App() {
 		return Array.from(new Map(runs.map((run) => [run.runId, run])).values());
 	}, [boundRuns, agentTools.unboundRuns]);
 
-	const latestMFDSRun = useMemo(() => {
-		return [...allAgentRuns]
-			.reverse()
-			.find((run) => run.agentType === "MFDSRegulatoryAgent");
-	}, [allAgentRuns]);
-
-	const latestICHRun = useMemo(() => {
-		return [...allAgentRuns]
-			.reverse()
-			.find((run) => run.agentType === "ICHRegulatoryAgent");
-	}, [allAgentRuns]);
-
-	const latestKONECTRun = useMemo(() => {
-		return [...allAgentRuns]
-			.reverse()
-			.find((run) => run.agentType === "KONECTRegulatoryAgent");
-	}, [allAgentRuns]);
-
-	const mfdsActivity = normalizeChatActivity(
-		activityFromRun(latestMFDSRun) ?? agent.state?.subagents?.mfds,
-		isBusy,
-		wasStopped,
-	);
-
-	const ichActivity = normalizeChatActivity(
-		activityFromRun(latestICHRun) ?? agent.state?.subagents?.ich,
-		isBusy,
-		wasStopped,
-	);
-
-	const konectActivity = normalizeChatActivity(
-		activityFromRun(latestKONECTRun) ?? agent.state?.subagents?.konect,
-		isBusy,
-		wasStopped,
-	);
-
 	const latestRegulatoryRun = useMemo(() => {
 		return [...allAgentRuns]
 			.reverse()
@@ -329,8 +290,6 @@ export default function App() {
 	}, [messages]);
 
 	function handleSend(text: string) {
-		setWasStopped(false);
-
 		sendMessage({
 			text,
 		});
@@ -351,8 +310,6 @@ export default function App() {
 
 	const handleStop = () => {
 		console.log("[App] stopping current agent turn");
-
-		setWasStopped(true);
 		stop();
 	};
 
@@ -536,7 +493,10 @@ export default function App() {
 	}
 
 	const handleCreateRegulatorySchedule = useCallback(
-		async (cron: string, payload: RegulatorySchedulePayload) => {
+		async (
+			cron: string,
+			payload: Omit<RegulatorySchedulePayload, "scheduleKey">,
+		) => {
 			return agent.stub.createRegulatorySchedule(cron, payload);
 		},
 		[agent],
@@ -553,6 +513,13 @@ export default function App() {
 	const handleCancelRegulatorySchedule = useCallback(
 		async (scheduleId: string) => {
 			return agent.stub.cancelRegulatorySchedule(scheduleId);
+		},
+		[agent],
+	);
+
+	const handleGetRegulatoryScheduleHistory = useCallback(
+		async (scheduleId: string, limit = 20) => {
+			return agent.stub.getRegulatoryScheduleHistory(scheduleId, limit);
 		},
 		[agent],
 	);
@@ -618,35 +585,6 @@ export default function App() {
 					</TabsList>
 
 					<TabsContent value="chat" className="space-y-6">
-						<section>
-							<div className="mb-3 flex items-center gap-2">
-								<Activity className="h-4 w-4" />
-								<h2 className="text-sm font-medium">
-									Current Regulatory Agent Activity
-								</h2>
-							</div>
-
-							<div className="grid gap-3 md:grid-cols-3">
-								<SubagentSummary
-									name="MFDS"
-									description="MFDS regulatory notices and guidance"
-									state={mfdsActivity}
-								/>
-
-								<SubagentSummary
-									name="ICH"
-									description="ICH guideline monitoring"
-									state={ichActivity}
-								/>
-
-								<SubagentSummary
-									name="KoNECT"
-									description="Clinical trial ecosystem updates"
-									state={konectActivity}
-								/>
-							</div>
-						</section>
-
 						<ChatPanel
 							messages={messages}
 							input={input}
@@ -673,6 +611,7 @@ export default function App() {
 							onCreate={handleCreateRegulatorySchedule}
 							onList={handleListRegulatorySchedules}
 							onCancel={handleCancelRegulatorySchedule}
+							onGetHistory={handleGetRegulatoryScheduleHistory}
 						/>
 					</TabsContent>
 

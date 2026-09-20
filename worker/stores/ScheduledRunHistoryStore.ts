@@ -114,6 +114,38 @@ export class ScheduledRunHistoryStore {
 			.run();
 	}
 
+	async getRunsByScheduleId(
+		scheduleId: string,
+		limit = 20,
+	): Promise<ScheduledRunRecord[]> {
+		const result = await this.db
+			.prepare(
+				`
+                    SELECT
+                        id,
+                        run_key AS runKey,
+                        schedule_id AS scheduleId,
+                        scheduled_for AS scheduledFor,
+                        workflow_id AS workflowId,
+                        status,
+                        started_at AS startedAt,
+                        completed_at AS completedAt,
+                        artifact_path AS artifactPath,
+                        email_status AS emailStatus,
+                        email_recipient AS emailRecipient,
+                        error
+                    FROM scheduled_runs
+                    WHERE schedule_id = ?
+                    ORDER BY started_at DESC
+                    LIMIT ?
+                    `,
+			)
+			.bind(scheduleId, limit)
+			.all<ScheduledRunRecord>();
+
+		return result.results;
+	}
+
 	async attachWorkflowId(id: string, workflowId: string): Promise<void> {
 		await this.db
 			.prepare(

@@ -45,6 +45,7 @@ import { weeklyToCron } from "../shared/utils/regulatorySchedule.ts";
 import { sendEmail } from "./services/emailDelivery.ts";
 import type { RegulatorySchedulePayload } from "../shared/types/schedule.ts";
 import { ScheduledRunHistoryStore } from "./stores/ScheduledRunHistoryStore.ts";
+import { MAIN_AGENT_MODEL } from "./constants.ts";
 
 export {
 	MFDSRegulatoryAgent,
@@ -170,9 +171,12 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	getModel(): LanguageModel {
 		const workersAI = createWorkersAI({
 			binding: this.env.AI,
+			gateway: {
+				id: "cra-assistant-agent",
+			},
 		});
 
-		return workersAI("@cf/zai-org/glm-4.7-flash");
+		return workersAI(MAIN_AGENT_MODEL);
 	}
 
 	getTools(): ToolSet {
@@ -409,7 +413,7 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 					sendEmail,
 					emailRecipient,
 				}) => {
-					if (sendEmail && !emailRecipient) {
+					if (sendEmail && !emailRecipient?.trim()) {
 						return {
 							success: false,
 							error:
@@ -423,8 +427,10 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 						sources,
 						purpose: "weekly-briefing",
 						sendEmail,
-						emailRecipient: sendEmail ? emailRecipient : undefined,
+						emailRecipient: sendEmail ? emailRecipient?.trim() : undefined,
 						timezone: "Asia/Seoul",
+						dayOfWeek,
+						localTime: time,
 					});
 
 					return {
@@ -514,6 +520,8 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 			purpose: input.purpose ?? "weekly-briefing",
 			sendEmail: input.sendEmail ?? false,
 			emailRecipient: input.emailRecipient ?? undefined,
+			emailIdempotencyKey: input.emailIdempotencyKey ?? undefined,
+			scheduleId: input.scheduleId ?? undefined,
 		};
 
 		const instanceId = await this.runWorkflow(
@@ -1238,6 +1246,8 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 				purpose: payload.purpose,
 				sendEmail: payload.sendEmail,
 				emailRecipient: payload.emailRecipient,
+				emailIdempotencyKey: `schedule-email:${runKey}`,
+				scheduleId: payload.scheduleKey,
 			});
 
 			/*
@@ -1312,6 +1322,18 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 	}
 
 	/* Schedules End */
+
+	/*
+	 * D1
+	 */
+
+	@callable()
+	async getRegulatoryScheduleHistory(scheduleId: string, limit = 20) {
+		const history = new ScheduledRunHistoryStore(this.env.HISTORY_DB);
+
+		return history.getRunsByScheduleId(scheduleId, limit);
+	}
+	/* D1 End */
 }
 
 export default {

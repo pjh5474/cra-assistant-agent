@@ -649,11 +649,16 @@ export class RegulatoryBriefingWorkflow extends AgentWorkflow<
 
 			const emailResult = await step.do("send-email", async () => {
 				try {
-					await sendEmail(this.env, draft);
+					const result = await sendEmail(this.env, draft, {
+						idempotencyKey: params.emailIdempotencyKey,
+
+						scheduleId: params.scheduleId,
+					});
 
 					return {
 						success: true as const,
-						sentAt: new Date().toISOString(),
+						deliveryStatus: result.status,
+						sentAt: result.status === "sent" ? result.sentAt : undefined,
 					};
 				} catch (error) {
 					return {

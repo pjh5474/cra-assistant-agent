@@ -1,8 +1,18 @@
 export function weeklyToCron(day: number, time: string): string {
 	const [hourText, minuteText] = time.split(":");
 
-	const hour = Number(hourText);
+	const kstHour = Number(hourText);
+
 	const minute = Number(minuteText);
 
-	return `${minute} ${hour} * * ${day}`;
+	let utcHour = kstHour - 9;
+
+	let utcDay = day;
+
+	if (utcHour < 0) {
+		utcHour += 24;
+		utcDay = (day + 6) % 7;
+	}
+
+	return `${minute} ${utcHour} * * ${utcDay}`;
 }

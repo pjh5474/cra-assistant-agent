@@ -74,9 +74,13 @@ export function WorkflowPanel({
 		onOpenWorkspace,
 	]);
 
+	const isWorkflowRunning = workflow
+		? Object.values(workflow.steps).some((step) => step.status === "running")
+		: false;
+
 	return (
 		<div className="space-y-6">
-			<WorkflowControls onRun={onRun} />
+			<WorkflowControls onRun={onRun} isWorkflowRunning={isWorkflowRunning} />
 			<RegulatoryWorkflowProgress workflow={workflow} />
 			<WorkflowSourceResults
 				sources={workflow?.sources}

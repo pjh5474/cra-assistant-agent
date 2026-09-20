@@ -19,6 +19,7 @@ import type { RegulatoryAnalysisRecord } from "../types/regulatory-analysis.ts";
 import type { BriefingCandidate } from "../types/regulatory-briefing.ts";
 import { RegulatoryMemoryStore } from "../stores/RegulatoryMemoryStore.ts";
 import type { ContextConfig } from "agents/context";
+import { SUB_AGENT_MODEL } from "../constants.ts";
 
 export class MFDSRegulatoryAgent extends Think<Env> {
 	maxSteps = 10;
@@ -26,9 +27,12 @@ export class MFDSRegulatoryAgent extends Think<Env> {
 	getModel(): LanguageModel {
 		const workersAI = createWorkersAI({
 			binding: this.env.AI,
+			gateway: {
+				id: "cra-assistant-agent",
+			},
 		});
 
-		return workersAI("@cf/zai-org/glm-4.7-flash");
+		return workersAI(SUB_AGENT_MODEL);
 	}
 
 	onStart() {

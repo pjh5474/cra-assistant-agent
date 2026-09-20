@@ -1,5 +1,7 @@
 import type { MFDSFeed } from "./types/mfds.ts";
 
+export const MAIN_AGENT_MODEL = "@cf/zai-org/glm-4.7-flash";
+
 export const SUB_AGENT_MODEL = "@cf/zai-org/glm-4.7-flash";
 
 export const RAG_EMBEDDING_MODEL = "@cf/baai/bge-m3";

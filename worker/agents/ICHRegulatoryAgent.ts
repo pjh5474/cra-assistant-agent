@@ -156,6 +156,9 @@ export class ICHRegulatoryAgent extends Think<Env> {
 	getModel(): LanguageModel {
 		const workersAI = createWorkersAI({
 			binding: this.env.AI,
+			gateway: {
+				id: "cra-assistant-agent",
+			},
 		});
 
 		return workersAI(SUB_AGENT_MODEL);

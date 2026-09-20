@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Play } from "lucide-react";
+import { Loader2, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,13 +22,17 @@ interface WorkflowRunParams {
 
 interface WorkflowControlsProps {
 	onRun: (params: WorkflowRunParams) => void | Promise<void>;
+	isWorkflowRunning: boolean;
 }
 
 function toIsoString(value: string): string {
 	return new Date(value).toISOString();
 }
 
-export function WorkflowControls({ onRun }: WorkflowControlsProps) {
+export function WorkflowControls({
+	onRun,
+	isWorkflowRunning,
+}: WorkflowControlsProps) {
 	const [since, setSince] = useState("2026-09-18T00:00");
 	const [until, setUntil] = useState("2026-09-19T23:59");
 	const [sources, setSources] = useState<Source[]>(["MFDS", "ICH", "KONECT"]);
@@ -56,6 +60,7 @@ export function WorkflowControls({ onRun }: WorkflowControlsProps) {
 			emailRecipient: sendEmail ? emailRecipient.trim() : undefined,
 		});
 	}
+
 	function toggleSource(source: Source) {
 		setSources((current) =>
 			current.includes(source)
@@ -145,12 +150,23 @@ export function WorkflowControls({ onRun }: WorkflowControlsProps) {
 					type="button"
 					onClick={handleRun}
 					disabled={
-						sources.length === 0 || (sendEmail && !emailRecipient.trim())
+						sources.length === 0 ||
+						(sendEmail && !emailRecipient.trim()) ||
+						isWorkflowRunning
 					}
 					className="w-full sm:w-auto"
 				>
-					<Play className="h-4 w-4" />
-					Run Workflow
+					{isWorkflowRunning ? (
+						<>
+							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							Workflow Running
+						</>
+					) : (
+						<>
+							<Play className="h-4 w-4" />
+							Run Workflow
+						</>
+					)}
 				</Button>
 			</CardContent>
 		</Card>

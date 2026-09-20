@@ -10,8 +10,11 @@ import type {
 	RegulatoryScheduleItem,
 	RegulatorySchedulePayload,
 	RegulatoryScheduleSource,
+	ScheduledRunHistoryItem,
 } from "../../../shared/types/schedule";
 import { SCHEDULE_DAYS } from "@/constants";
+import { ScheduleHistoryDialog } from "./ScheduleHistoryDialog";
+import { getNextWeeklyRunKst } from "@/lib/getNextWeeklyRunKst";
 
 const SOURCES: Array<{
 	value: RegulatoryScheduleSource;
@@ -34,18 +37,24 @@ const SOURCES: Array<{
 interface SchedulePanelProps {
 	onCreate: (
 		cron: string,
-		payload: RegulatorySchedulePayload,
+		payload: Omit<RegulatorySchedulePayload, "scheduleKey">,
 	) => Promise<unknown>;
 
 	onList: () => Promise<RegulatoryScheduleItem[]>;
 
 	onCancel: (scheduleId: string) => Promise<unknown>;
+
+	onGetHistory: (
+		scheduleId: string,
+		limit?: number,
+	) => Promise<ScheduledRunHistoryItem[]>;
 }
 
 export function SchedulePanel({
 	onCreate,
 	onList,
 	onCancel,
+	onGetHistory,
 }: SchedulePanelProps) {
 	const [day, setDay] = useState(5);
 
@@ -69,6 +78,18 @@ export function SchedulePanel({
 
 	const [cancellingId, setCancellingId] = useState<string | null>(null);
 
+	const [historyBySchedule, setHistoryBySchedule] = useState<
+		Record<string, ScheduledRunHistoryItem[]>
+	>({});
+
+	const [historyOpen, setHistoryOpen] = useState(false);
+
+	const [selectedScheduleHistory, setSelectedScheduleHistory] = useState<
+		ScheduledRunHistoryItem[]
+	>([]);
+
+	const [historyLoading, setHistoryLoading] = useState(false);
+
 	const refreshSchedules = useCallback(async () => {
 		setLoading(true);
 
@@ -76,16 +97,20 @@ export function SchedulePanel({
 			const result = await onList();
 
 			setSchedules(result);
-		} catch (error) {
-			console.error("[SchedulePanel] list failed", error);
 
-			toast.error("Failed to load schedules", {
-				description: error instanceof Error ? error.message : undefined,
-			});
+			const entries = await Promise.all(
+				result.map(async (schedule) => {
+					const history = await onGetHistory(schedule.payload.scheduleKey, 1);
+
+					return [schedule.id, history] as const;
+				}),
+			);
+
+			setHistoryBySchedule(Object.fromEntries(entries));
 		} finally {
 			setLoading(false);
 		}
-	}, [onList]);
+	}, [onList, onGetHistory]);
 
 	useEffect(() => {
 		void refreshSchedules();
@@ -112,12 +137,14 @@ export function SchedulePanel({
 
 		const cron = weeklyToCron(day, time);
 
-		const payload: RegulatorySchedulePayload = {
+		const payload: Omit<RegulatorySchedulePayload, "scheduleKey"> = {
 			sources,
 			purpose: "weekly-briefing",
 			sendEmail,
 			emailRecipient: sendEmail ? emailRecipient.trim() : undefined,
 			timezone: "Asia/Seoul",
+			dayOfWeek: day,
+			localTime: time,
 		};
 
 		setCreating(true);
@@ -158,6 +185,25 @@ export function SchedulePanel({
 			});
 		} finally {
 			setCancellingId(null);
+		}
+	}
+
+	async function handleViewHistory(scheduleKey: string) {
+		setHistoryOpen(true);
+		setHistoryLoading(true);
+
+		try {
+			const history = await onGetHistory(scheduleKey, 20);
+
+			setSelectedScheduleHistory(history);
+		} catch (error) {
+			console.error("[SchedulePanel] history load failed", error);
+
+			toast.error("Failed to load schedule history", {
+				description: error instanceof Error ? error.message : undefined,
+			});
+		} finally {
+			setHistoryLoading(false);
 		}
 	}
 
@@ -307,6 +353,14 @@ export function SchedulePanel({
 
 					<div className="space-y-3">
 						{schedules.map((schedule) => {
+							const history = historyBySchedule[schedule.id] ?? [];
+
+							const lastRun = history[0];
+
+							const nextRun = getNextWeeklyRunKst(
+								schedule.payload.dayOfWeek,
+								schedule.payload.localTime,
+							);
 							return (
 								<div key={schedule.id} className="rounded-lg border p-4">
 									<div className="flex items-start justify-between gap-4">
@@ -317,7 +371,8 @@ export function SchedulePanel({
 												</p>
 
 												<p className="text-xs text-muted-foreground">
-													Next run: {formatScheduleTimeKst(schedule.time)}
+													Next run:{" "}
+													{formatScheduleTimeKst(nextRun.getTime() / 1000)}
 												</p>
 											</div>
 
@@ -334,7 +389,7 @@ export function SchedulePanel({
 
 											{schedule.type === "cron" && schedule.cron && (
 												<p className="text-xs text-muted-foreground">
-													Cron: {schedule.cron}
+													Cron (UTC): {schedule.cron}
 												</p>
 											)}
 
@@ -346,20 +401,55 @@ export function SchedulePanel({
 											)}
 										</div>
 
-										<Button
-											type="button"
-											size="sm"
-											variant="outline"
-											disabled={cancellingId === schedule.id}
-											onClick={() => void handleCancel(schedule.id)}
-										>
-											{cancellingId === schedule.id ? (
-												<Loader2 className="h-4 w-4 animate-spin" />
-											) : (
-												<Trash2 className="h-4 w-4" />
-											)}
-											Cancel
-										</Button>
+										{lastRun && (
+											<div className="space-y-1 text-xs text-muted-foreground">
+												<p>
+													Last run:{" "}
+													{new Intl.DateTimeFormat("ko-KR", {
+														timeZone: "Asia/Seoul",
+														year: "numeric",
+														month: "short",
+														day: "numeric",
+														hour: "2-digit",
+														minute: "2-digit",
+													}).format(new Date(lastRun.startedAt))}
+												</p>
+
+												<p>Status: {lastRun.status}</p>
+
+												{lastRun.emailStatus && (
+													<p>Email: {lastRun.emailStatus}</p>
+												)}
+											</div>
+										)}
+
+										<div className="flex gap-2">
+											<Button
+												type="button"
+												size="sm"
+												variant="outline"
+												onClick={() =>
+													void handleViewHistory(schedule.payload.scheduleKey)
+												}
+											>
+												View History
+											</Button>
+
+											<Button
+												type="button"
+												size="sm"
+												variant="destructive"
+												disabled={cancellingId === schedule.id}
+												onClick={() => void handleCancel(schedule.id)}
+											>
+												{cancellingId === schedule.id ? (
+													<Loader2 className="h-4 w-4 animate-spin" />
+												) : (
+													<Trash2 className="h-4 w-4" />
+												)}
+												Cancel
+											</Button>
+										</div>
 									</div>
 								</div>
 							);
@@ -367,6 +457,19 @@ export function SchedulePanel({
 					</div>
 				</CardContent>
 			</Card>
+
+			<ScheduleHistoryDialog
+				open={historyOpen}
+				loading={historyLoading}
+				history={selectedScheduleHistory}
+				onOpenChange={(open) => {
+					setHistoryOpen(open);
+
+					if (!open) {
+						setSelectedScheduleHistory([]);
+					}
+				}}
+			/>
 		</div>
 	);
 }
