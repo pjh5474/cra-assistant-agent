@@ -393,9 +393,8 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 			until: input.until,
 			sources: input.sources ?? ["MFDS"],
 			purpose: input.purpose ?? "weekly-briefing",
-			includeRag: input.includeRag ?? false,
-			requireApproval: input.requireApproval ?? false,
 			sendEmail: input.sendEmail ?? false,
+			emailRecipient: input.emailRecipient ?? undefined,
 		};
 
 		const instanceId = await this.runWorkflow(

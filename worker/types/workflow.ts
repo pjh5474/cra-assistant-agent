@@ -164,8 +164,7 @@ export interface StartRegulatoryBriefingInput {
 	until?: string;
 	sources?: Array<"MFDS" | "ICH" | "KONECT">;
 	purpose?: "weekly-briefing" | "regulatory-check" | "cra-learning";
-	includeRag?: boolean;
-	requireApproval?: boolean;
+	emailRecipient?: string;
 	sendEmail?: boolean;
 }
 

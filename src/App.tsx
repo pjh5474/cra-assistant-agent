@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAgent, useAgentToolEvents } from "agents/react";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
 import { Activity } from "lucide-react";
@@ -28,13 +28,7 @@ import type {
 import type { EmailDraft } from "shared/types/email.ts";
 import { EmailApprovalDialog } from "./components/email/EmailApprovalDialog.tsx";
 import { toast } from "sonner";
-
-const MAIN_TOOL_LABELS: Record<string, string> = {
-	searchRegulatoryDocuments: "Regulatory RAG Search",
-	searchRegulatoryMemory: "Regulatory Memory Search",
-	listRecentRegulatoryChanges: "Recent Regulatory Changes",
-	getRegulatoryAnalysis: "Regulatory Analysis Lookup",
-};
+import { EMAIL_APPROVAL_STORAGE_KEY, MAIN_TOOL_LABELS } from "./constants.ts";
 
 function stringifyActivityPreview(value: unknown): string | undefined {
 	if (value === undefined || value === null) {
@@ -85,7 +79,34 @@ export default function App() {
 
 	const [emailSending, setEmailSending] = useState(false);
 
-	const handledEmailDrafts = useRef<Set<string>>(new Set());
+	const [pendingEmailToolCallId, setPendingEmailToolCallId] = useState<
+		string | null
+	>(null);
+
+	function getHandledEmailApprovalIds(): Set<string> {
+		try {
+			const stored = localStorage.getItem(EMAIL_APPROVAL_STORAGE_KEY);
+
+			if (!stored) {
+				return new Set();
+			}
+
+			return new Set(JSON.parse(stored) as string[]);
+		} catch {
+			return new Set();
+		}
+	}
+
+	function markEmailApprovalHandled(id: string) {
+		const ids = getHandledEmailApprovalIds();
+
+		ids.add(id);
+
+		localStorage.setItem(
+			EMAIL_APPROVAL_STORAGE_KEY,
+			JSON.stringify(Array.from(ids).slice(-100)),
+		);
+	}
 
 	const {
 		messages,
@@ -255,33 +276,41 @@ export default function App() {
 				if (!isToolUIPart(part)) {
 					continue;
 				}
+
 				if (getToolName(part) !== "prepareEmailDraft") {
 					continue;
 				}
+
 				if (part.state !== "output-available") {
 					continue;
 				}
-				if (handledEmailDrafts.current.has(part.toolCallId)) {
+
+				const handled = getHandledEmailApprovalIds();
+
+				if (handled.has(part.toolCallId)) {
 					continue;
 				}
+
 				const output = part.output as {
 					type?: string;
 					draft?: EmailDraft;
 				};
+
 				if (output.type !== "email_approval_required" || !output.draft) {
 					continue;
 				}
 
-				handledEmailDrafts.current.add(part.toolCallId);
-
-				console.log("[Email Approval] draft detected", {
-					toolCallId: part.toolCallId,
-					draft: output.draft,
-				});
-
+				//
+				// 여기서는 아직 handled 처리하지 않습니다.
+				// 실제 Send/Cancel 때 처리합니다.
+				//
 				setEmailDraft(output.draft);
 
+				setPendingEmailToolCallId(part.toolCallId);
+
 				setEmailApprovalOpen(true);
+
+				return;
 			}
 		}
 	}, [messages]);
@@ -302,9 +331,8 @@ export default function App() {
 			until: params.until,
 			sources: params.sources,
 			purpose: "weekly-briefing",
-			includeRag: params.includeRag,
-			requireApproval: params.requireApproval,
 			sendEmail: params.sendEmail,
+			emailRecipient: params.emailRecipient,
 		});
 	};
 
@@ -470,6 +498,16 @@ export default function App() {
 
 			setEmailDraft(null);
 
+			if (pendingEmailToolCallId) {
+				markEmailApprovalHandled(pendingEmailToolCallId);
+			}
+
+			setPendingEmailToolCallId(null);
+
+			setEmailApprovalOpen(false);
+
+			setEmailDraft(null);
+
 			toast.success("Email sent", {
 				description: `Sent to ${draft.to.join(", ")}`,
 			});
@@ -490,16 +528,22 @@ export default function App() {
 				open={emailApprovalOpen}
 				draft={emailDraft}
 				sending={emailSending}
-				onOpenChange={setEmailApprovalOpen}
+				onOpenChange={(open) => {
+					if (!open) {
+						if (pendingEmailToolCallId) {
+							markEmailApprovalHandled(pendingEmailToolCallId);
+						}
+
+						setPendingEmailToolCallId(null);
+
+						setEmailDraft(null);
+					}
+
+					setEmailApprovalOpen(open);
+				}}
 				onApprove={handleApprovedEmailSend}
 			/>
-			<AppHeader
-				isBusy={isBusy}
-				isRecovering={isRecovering}
-				clearHistory={clearHistory}
-				isStreaming={isStreaming}
-				handleStop={handleStop}
-			/>
+			<AppHeader isStreaming={isStreaming} handleStop={handleStop} />
 
 			<main
 				className={`mx-auto grid max-w-7xl gap-6 px-6 py-6 ${
@@ -555,6 +599,7 @@ export default function App() {
 							onInputChange={setInput}
 							onSend={handleSend}
 							onStop={handleStop}
+							onClearHistory={clearHistory}
 							isBusy={isBusy}
 							isRecovering={isRecovering}
 							getRunsForToolCall={agentTools.getRunsForToolCall}

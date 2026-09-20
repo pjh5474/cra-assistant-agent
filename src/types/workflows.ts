@@ -3,8 +3,6 @@ export type WorkflowRunParams = {
 	until?: string;
 
 	sources: ("MFDS" | "ICH" | "KONECT")[];
-
-	includeRag: boolean;
-	requireApproval: boolean;
 	sendEmail: boolean;
+	emailRecipient?: string;
 };

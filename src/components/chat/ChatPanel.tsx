@@ -1,7 +1,15 @@
 import type { AgentToolRunState } from "agents";
 import type { UIMessage } from "ai";
-import { Bot, Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Bot, Eraser, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+	Card,
+	CardAction,
+	CardContent,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { ChatComposer } from "./ChatComposer";
@@ -14,6 +22,7 @@ interface ChatPanelProps {
 	onInputChange: (value: string) => void;
 	onSend: (text: string) => void;
 	onStop?: () => void;
+	onClearHistory: () => void;
 	isBusy: boolean;
 	isRecovering: boolean;
 	getRunsForToolCall: (toolCallId: string) => AgentToolRunState[];
@@ -25,17 +34,36 @@ export function ChatPanel({
 	onInputChange,
 	onSend,
 	onStop,
+	onClearHistory,
 	isBusy,
 	isRecovering,
 	getRunsForToolCall,
 }: ChatPanelProps) {
 	return (
 		<Card className="flex h-[min(36rem,calc(100vh-22rem))] flex-col overflow-hidden">
-			<CardHeader className="shrink-0 border-b py-4">
+			<CardHeader className="shrink-0 items-center border-b py-4">
 				<CardTitle className="flex items-center gap-2 text-base">
 					<Bot className="h-4 w-4" />
 					CRA Regulatory Assistant
 				</CardTitle>
+
+				<CardAction className="flex items-center gap-2">
+					<Badge variant={isBusy ? "default" : "secondary"}>
+						{isRecovering ? "Recovering" : isBusy ? "Working" : "Ready"}
+					</Badge>
+
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={onClearHistory}
+						disabled={messages.length === 0}
+						className="text-muted-foreground hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+					>
+						<Eraser />
+						Clear chat
+					</Button>
+				</CardAction>
 			</CardHeader>
 
 			<CardContent className="flex min-h-0 flex-1 flex-col p-0">

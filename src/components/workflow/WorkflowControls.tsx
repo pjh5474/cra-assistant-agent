@@ -16,10 +16,8 @@ interface WorkflowRunParams {
 	since: string;
 	until?: string;
 	sources: Source[];
-
-	includeRag: boolean;
-	requireApproval: boolean;
 	sendEmail: boolean;
+	emailRecipient?: string;
 }
 
 interface WorkflowControlsProps {
@@ -34,32 +32,30 @@ export function WorkflowControls({ onRun }: WorkflowControlsProps) {
 	const [since, setSince] = useState("2026-09-18T00:00");
 	const [until, setUntil] = useState("2026-09-19T23:59");
 	const [sources, setSources] = useState<Source[]>(["MFDS", "ICH", "KONECT"]);
-	const [includeRag, setIncludeRag] = useState(false);
-	const [requireApproval, setRequireApproval] = useState(false);
 	const [sendEmail, setSendEmail] = useState(false);
+	const [emailRecipient, setEmailRecipient] = useState("");
 
 	function handleRun() {
-		console.log("[WorkflowControls] raw values", {
-			since,
-			until,
-			convertedSince: new Date(since).toISOString(),
-			convertedUntil: until ? new Date(until).toISOString() : undefined,
-		});
-
 		if (!since || sources.length === 0) {
+			return;
+		}
+
+		if (sendEmail && !emailRecipient.trim()) {
 			return;
 		}
 
 		return onRun({
 			since: toIsoString(since),
+
 			until: until ? toIsoString(until) : undefined,
+
 			sources,
-			includeRag,
-			requireApproval,
+
 			sendEmail,
+
+			emailRecipient: sendEmail ? emailRecipient.trim() : undefined,
 		});
 	}
-
 	function toggleSource(source: Source) {
 		setSources((current) =>
 			current.includes(source)
@@ -116,27 +112,7 @@ export function WorkflowControls({ onRun }: WorkflowControlsProps) {
 					</div>
 				</div>
 
-				<div className="grid gap-2 sm:grid-cols-3">
-					<label className="flex items-center gap-2 text-sm">
-						<input
-							type="checkbox"
-							checked={includeRag}
-							onChange={(event) => setIncludeRag(event.target.checked)}
-							className="size-4 accent-primary"
-						/>
-						Include RAG
-					</label>
-
-					<label className="flex items-center gap-2 text-sm">
-						<input
-							type="checkbox"
-							checked={requireApproval}
-							onChange={(event) => setRequireApproval(event.target.checked)}
-							className="size-4 accent-primary"
-						/>
-						Require Approval
-					</label>
-
+				<div className="space-y-3">
 					<label className="flex items-center gap-2 text-sm">
 						<input
 							type="checkbox"
@@ -144,14 +120,33 @@ export function WorkflowControls({ onRun }: WorkflowControlsProps) {
 							onChange={(event) => setSendEmail(event.target.checked)}
 							className="size-4 accent-primary"
 						/>
-						Send Email
+						Send report by email
 					</label>
+
+					{sendEmail && (
+						<label className="block max-w-md space-y-1.5 text-sm">
+							<span className="text-muted-foreground">Email recipient</span>
+
+							<Input
+								type="email"
+								value={emailRecipient}
+								onChange={(event) => setEmailRecipient(event.target.value)}
+								placeholder="recipient@example.com"
+							/>
+
+							<p className="text-xs text-muted-foreground">
+								You will review and approve the email before it is sent.
+							</p>
+						</label>
+					)}
 				</div>
 
 				<Button
 					type="button"
 					onClick={handleRun}
-					disabled={sources.length === 0}
+					disabled={
+						sources.length === 0 || (sendEmail && !emailRecipient.trim())
+					}
 					className="w-full sm:w-auto"
 				>
 					<Play className="h-4 w-4" />

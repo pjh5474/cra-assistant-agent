@@ -4,10 +4,9 @@ import { WorkflowControls } from "./WorkflowControls";
 import { WorkflowSourceResults } from "./WorkflowSourceResults";
 import type { RegulatoryWorkflowState } from "../../../worker/types/workflow.ts";
 import type { WorkflowRunParams } from "@/types/workflows";
-
-import { useEffect, useRef } from "react";
-
+import { useEffect } from "react";
 import { toast } from "sonner";
+import { WORKFLOW_TOAST_STORAGE_KEY } from "@/constants.ts";
 
 interface WorkflowPanelProps {
 	workflow?: RegulatoryWorkflowState;
@@ -20,18 +19,43 @@ export function WorkflowPanel({
 	onRun,
 	onOpenWorkspace,
 }: WorkflowPanelProps) {
-	const lastToastedWorkflowId = useRef<string | null>(null);
+	function getToastedWorkflowIds(): Set<string> {
+		try {
+			const stored = localStorage.getItem(WORKFLOW_TOAST_STORAGE_KEY);
+
+			if (!stored) {
+				return new Set();
+			}
+
+			return new Set(JSON.parse(stored) as string[]);
+		} catch {
+			return new Set();
+		}
+	}
+
+	function markWorkflowToasted(workflowId: string) {
+		const ids = getToastedWorkflowIds();
+
+		ids.add(workflowId);
+
+		localStorage.setItem(
+			WORKFLOW_TOAST_STORAGE_KEY,
+			JSON.stringify(Array.from(ids).slice(-50)),
+		);
+	}
 
 	useEffect(() => {
-		if (
-			workflow?.stage !== "completed" ||
-			!workflow.workflowId ||
-			lastToastedWorkflowId.current === workflow.workflowId
-		) {
+		if (workflow?.stage !== "completed" || !workflow.workflowId) {
 			return;
 		}
 
-		lastToastedWorkflowId.current = workflow.workflowId;
+		const toasted = getToastedWorkflowIds();
+
+		if (toasted.has(workflow.workflowId)) {
+			return;
+		}
+
+		markWorkflowToasted(workflow.workflowId);
 
 		toast.success("Regulatory briefing saved", {
 			description: workflow.artifact?.path ?? "Report saved to Workspace.",
@@ -39,12 +63,9 @@ export function WorkflowPanel({
 			action: onOpenWorkspace
 				? {
 						label: "Open Workspace",
-
 						onClick: onOpenWorkspace,
 					}
 				: undefined,
-
-			duration: 5000,
 		});
 	}, [
 		workflow?.stage,
