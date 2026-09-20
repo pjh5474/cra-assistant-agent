@@ -40,7 +40,7 @@ export function ChatPanel({
 	getRunsForToolCall,
 }: ChatPanelProps) {
 	return (
-		<Card className="flex h-[min(36rem,calc(100vh-22rem))] flex-col overflow-hidden">
+		<Card className="flex h-[calc(100vh-10.5rem)] flex-col overflow-hidden">
 			<CardHeader className="shrink-0 items-center border-b py-4">
 				<CardTitle className="flex items-center gap-2 text-base">
 					<Bot className="h-4 w-4" />
@@ -48,7 +48,16 @@ export function ChatPanel({
 				</CardTitle>
 
 				<CardAction className="flex items-center gap-2">
-					<Badge variant={isBusy ? "default" : "secondary"}>
+					<Badge
+						variant="secondary"
+						className={
+							isRecovering
+								? "border-transparent bg-sky-500/15 text-sky-700 dark:text-sky-400"
+								: isBusy
+									? "border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400"
+									: "border-transparent bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+						}
+					>
 						{isRecovering ? "Recovering" : isBusy ? "Working" : "Ready"}
 					</Badge>
 
