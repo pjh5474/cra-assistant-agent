@@ -13,10 +13,8 @@ import { isToolUIPart } from "ai";
 import type { CraAssistantAgentState } from "@/types/agent";
 import type { WorkflowRunParams } from "@/types/workflows";
 import { activityFromRun, normalizeChatActivity } from "./lib/subagent.ts";
-import { Button } from "./components/ui/button.tsx";
 import { AgentMemoryPanel } from "./components/memory/AgentMemoryPanel.tsx";
 import type { AgentMemorySnapshot } from "./types/agent-memory.ts";
-import type { AgentActivity } from "./types/agent-activity.ts";
 import { AgentActivityPanel } from "./components/activity/AgentActivityPanel.tsx";
 import { mapAgentToolActivities } from "./lib/agent-activity.ts";
 

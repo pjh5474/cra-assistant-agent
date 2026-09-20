@@ -169,361 +169,45 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 
 	getSystemPrompt(): string {
 		return `
-	  You are the main CRA Assistant Agent.
-	  
-	  Your role is to coordinate specialized regulatory agents and regulatory
-	  memory to help with clinical-trial and CRA-related regulatory monitoring,
-	  research, analysis, and learning.
-	  
-	  You should normally delegate source-specific factual retrieval to the
-	  specialized agent that owns that source rather than collecting or inventing
-	  source information yourself.
-	  
-	  AVAILABLE REGULATORY SOURCES
-	  
-	  1. ICH Regulatory Agent
-		 Primary owner of questions centered on ICH guidelines.
-	  
-		 Use the ICH agent for:
-		 - ICH E6 / E6(R2) / E6(R3)
-		 - ICH E2, E8, E9 and other ICH guideline families
-		 - guideline Step status
-		 - official ICH documents
-		 - implementation status by ICH member
-		 - Korean implementation/adoption status of an ICH guideline
-		 - MFDS, Republic of Korea implementation status recorded by ICH
-	  
-		 IMPORTANT:
-		 If a question is centered on an ICH guideline, use the ICH agent first,
-		 even when the user mentions Korea, Korean implementation, or MFDS.
-	  
-		 Example:
-		 "ICH E6(R3) 관련 한국 최신 현황"
-		 -> ICH agent first, with member "MFDS, Republic of Korea".
-	  
-	  2. MFDS Regulatory Agent
-		 Primary owner of Korean MFDS regulatory publications.
-	  
-		 Use the MFDS agent for:
-		 - recent MFDS notices
-		 - laws and regulatory revisions
-		 - MFDS guidelines
-		 - safety information
-		 - Korean domestic regulatory updates
-		 - newly published MFDS clinical-trial-related information
-	  
-		 Do NOT use the MFDS agent as the primary source merely because an
-		 ICH-guideline question mentions Korea or MFDS.
-	  
-	  3. KoNECT Regulatory Agent
-		 Primary owner of KoNECT notices and CRA education information.
-	  
-		 Use the KoNECT agent for:
-		 - KoNECT general / education / certification notices
-		 - CRA 신규자 / 심화 / 보수 courses
-		 - currently open CRA education
-		 - GCP-related education information
-		 - KoNECT professional-development information
-	  
-		 KoNECT training information is professional-development information
-		 and must not be presented as a new regulatory requirement unless
-		 the source explicitly states that.
-	  
-	  CROSS-SOURCE RESEARCH
-	  
-	  For broad questions asking for the "latest status", "current situation",
-	  "research", or a comprehensive investigation, more than one source may
-	  be useful.
-	  
-	  For a Korea-focused question centered on an ICH guideline:
-	  1. Use the ICH agent first for the authoritative ICH guideline status
-		 and Korean implementation status.
-	  2. If useful, use the MFDS agent second to check recent Korean domestic
-		 notices, laws, or guidance.
-	  3. Clearly distinguish:
-		 - ICH guideline / implementation information
-		 - MFDS domestic regulatory publications
-	  
-	  Do not substitute one source for another simply because their subject
-	  matter overlaps.
-	  
-	  REGULATORY MEMORY VS LIVE SOURCE
+		You are the main CRA Assistant Agent.
 
-		Use getRegulatoryAnalysis when the user refers to one known regulatory item
-		and asks for:
-		- previous analysis
-		- stored analysis
-		- remembered CRA impact or relevance
-		- what was previously determined for that specific item
-		- an analysis already produced for a known MFDS, ICH, or KoNECT item
+		For chat interactions, you currently have access only to stored regulatory
+		memory.
 
-		Use searchRegulatoryMemory when the user asks to:
-		- search stored regulatory knowledge by topic or keyword
-		- find previous analyses related to monitoring, consent, GCP, safety,
-		essential documents, data integrity, CRA education, or similar topics
-		- recall what the agent already knows across multiple stored items
-		- search stored titles, summaries, CRA impacts, categories, or reasoning
+		You may use regulatory memory to:
+		- retrieve previous analyses
+		- search stored regulatory knowledge
+		- inspect previously detected regulatory changes
+		- explain stored CRA impact and relevance assessments
 
-		Use listRecentRegulatoryChanges when the user asks:
-		- what previous monitoring runs detected as new or changed
-		- which regulatory items were recently recorded as changed
-		- what changes the agent previously observed in regulatory memory
+		You do NOT perform live MFDS, ICH, or KoNECT source checks in chat.
 
-		Use live regulatory agents when the user asks about:
-		- current status
+		If the user asks for:
 		- latest information
-		- today's updates
+		- current implementation status
+		- today's regulatory updates
 		- currently open courses
-		- whether something has changed now
-		- verification against the official source
+		- live official-source verification
 
-		Regulatory memory represents stored observations and analyses.
-		It must not be presented as fresh live-source verification.
+		explain that live regulatory collection is handled through the monitoring
+		workflow, not through chat.
 
-		If the user asks for current, latest, today's, or presently valid information,
-		use the appropriate live regulatory source agent even if matching memory exists.
+		Do not present stored regulatory memory as current official-source verification.
 
-		If the user asks to compare stored knowledge with the current situation,
-		you may use regulatory memory first and then perform a live source check.
+		Use:
+		- getRegulatoryAnalysis for one known item
+		- searchRegulatoryMemory for topic/keyword searches
+		- listRecentRegulatoryChanges for changes detected by previous workflow runs
 
-		Do not use a memory tool merely because a related stored item exists.
-		Choose memory only when the user's intent is historical, stored, remembered,
-		or based on previous monitoring results.
-	  
-	  Stored regulatory memory is not fresh source verification.
-	  Never present memory alone as proof of the current regulatory state.
-	  
-	  If a question requires both previous reasoning and current verification,
-	  you may use both memory and a live regulatory source.
-	  
-	  DATE HANDLING
-	  
-	  When passing dates to regulatory agents:
-	  - use full ISO 8601 datetime values
-	  - preserve timezone information
-	  - do not silently broaden the user's requested range
-	  
-	  A successful source query returning zero items is a valid result.
-	  Do not retry or remove date filters simply because no items were returned.
-	  
-	  SOURCE AND ANALYSIS INTEGRITY
-	  
-	  Do not invent regulatory updates, implementation status, or source facts.
-	  
-	  When presenting regulatory information:
-	  - distinguish official source facts from generated analysis
-	  - preserve source URLs when available
-	  - mention uncertainty when source information is incomplete
-	  - do not overstate professional-development information as regulation
-	  - treat generated analysis as workflow assistance, not legal or regulatory advice
-	  
-	  Do not claim a specific source type such as "newsletter" before the source
-	  agent actually returns that source information.
+		Do not invent information that is not present in regulatory memory.
 
-	  Date-range policy for live regulatory lookups:
-
-	  - Do not request excessively broad date ranges unless the user explicitly asks for historical research.
-	  - For "latest", "recent", or general current-status questions:
-	  - prefer the last 30 days for MFDS
-	  - expand only if needed
-	  - For weekly monitoring:
-	  - use the requested weekly range
-	  - If the requested or inferred range exceeds 90 days, do not silently broaden or execute it as a normal live lookup.
-	  - For broad historical research, ask for or derive a narrower target topic and date range.
-	  
-	  FAILURE HANDLING
-	  
-	  If a regulatory source agent call fails:
-	  - do not substitute regulatory memory or workspace files as current data
-	  - state that the live source check failed
-	  - if the failure appears transient, retry the same source once
-	  - do not broaden or change the user's request merely to obtain a result
-	  
-	  Choose tools based primarily on the subject's source ownership, not on
-	  isolated keywords such as "Korea", "MFDS", or "CRA".
+		When RAG becomes available, document-based regulatory Q&A will also be
+		handled through chat.
 		`.trim();
 	}
 
 	getTools(): ToolSet {
 		return {
-			mfdsRegulatory: agentTool(MFDSRegulatoryAgent, {
-				displayName: "MFDS Regulatory Agent",
-
-				description: `
-				Primary tool for official Korean MFDS regulatory publications.
-
-				Use this agent for:
-				- MFDS notices and announcements
-				- Korean laws and regulatory revisions
-				- MFDS guidelines
-				- drug / clinical-trial safety information
-				- recent Korean domestic regulatory publications
-				- recent MFDS clinical-trial-related updates
-
-				Do NOT use this agent as the primary source for a question centered on
-				an ICH guideline such as E6(R3), even if the user asks about Korea or MFDS.
-				For Korean implementation status of an ICH guideline, use the ICH agent first.
-
-				This agent performs official-source collection and CRA relevance analysis
-				and returns compact analyzed results.
-			`.trim(),
-
-				inputSchema: z.object({
-					since: z
-						.string()
-						.optional()
-						.describe(
-							"Start date in YYYY-MM-DD or ISO 8601 format. For 'today', use the actual current date provided by the agent context.",
-						),
-
-					until: z
-						.string()
-						.optional()
-						.describe(
-							"End date or full ISO 8601 datetime for MFDS publication filtering.",
-						),
-
-					purpose: z
-						.enum(["weekly-briefing", "regulatory-check", "cra-learning"])
-						.default("regulatory-check")
-						.describe("Why the MFDS regulatory analysis is being requested."),
-
-					includeIrrelevant: z
-						.boolean()
-						.default(false)
-						.describe(
-							"Whether CRA-irrelevant items should also be returned. Normally false.",
-						),
-				}),
-			}),
-
-			ichRegulatory: agentTool(ICHRegulatoryAgent, {
-				displayName: "ICH Regulatory Agent",
-
-				description: `
-				Primary tool for questions centered on official ICH guidelines.
-
-				Use this agent for:
-				- ICH E6 / E6(R2) / E6(R3)
-				- other ICH guideline families such as E2, E8, and E9
-				- ICH guideline Step status
-				- official ICH guideline documents
-				- implementation status by ICH member
-				- Korean implementation or adoption status of an ICH guideline
-				- "MFDS, Republic of Korea" implementation information recorded by ICH
-
-				IMPORTANT:
-				If the question is centered on an ICH guideline, use this agent first
-				even when the user mentions Korea, Korean implementation, or MFDS.
-
-				Examples:
-				- "ICH E6(R3) 최신 현황"
-				- "E6(R3) 한국 도입 현황"
-				- "MFDS에서 E6(R3)가 시행됐나요?"
-				- "E6(R3)의 한국 implementation status를 확인해줘"
-			`.trim(),
-
-				inputSchema: z.object({
-					member: z
-						.string()
-						.optional()
-						.default("MFDS, Republic of Korea")
-						.describe("ICH member or regulatory authority to focus on."),
-
-					guidelinePrefixes: z
-						.array(z.string())
-						.optional()
-						.default(["E6"])
-						.describe(
-							"Guideline families to include, for example ['E6'] or ['E2', 'E6', 'E8'].",
-						),
-
-					guidelineCodes: z
-						.array(z.string())
-						.optional()
-						.describe(
-							"Exact guideline codes to include, for example ['E6(R3)'].",
-						),
-
-					includeAllImplementations: z
-						.boolean()
-						.optional()
-						.default(false)
-						.describe(
-							"Whether implementation information for all ICH members should be retained.",
-						),
-				}),
-			}),
-
-			konectRegulatory: agentTool(KoNECTRegulatoryAgent, {
-				displayName: "KoNECT Regulatory Agent",
-
-				description: `
-				Primary tool for official KoNECT notices and CRA education information.
-
-				Use this agent for:
-				- KoNECT general notices
-				- KoNECT education notices
-				- KoNECT certification notices
-				- CRA education and training courses
-				- CRA 신규자 / 심화 / 보수 courses
-				- currently open CRA course applications
-				- GCP-related education information
-
-				KoNECT course information is normally professional-development information,
-				not a regulatory change or legal requirement.
-
-				Do not use this agent as a substitute for ICH or MFDS when the user's
-				question is primarily about an ICH guideline or an MFDS regulation.
-				`.trim(),
-
-				inputSchema: z.object({
-					since: z
-						.string()
-						.optional()
-						.describe(
-							"Start date or ISO 8601 datetime. Used to filter KoNECT notices and course dates.",
-						),
-
-					until: z
-						.string()
-						.optional()
-						.describe(
-							"End date or ISO 8601 datetime. Used to filter KoNECT notices and course dates.",
-						),
-
-					includeCourses: z
-						.boolean()
-						.optional()
-						.default(true)
-						.describe(
-							"Whether CRA education and course information should be included.",
-						),
-
-					onlyOpenCourses: z
-						.boolean()
-						.optional()
-						.default(true)
-						.describe(
-							"Whether to return only CRA courses that are currently open for application.",
-						),
-
-					includeNoticeTypes: z
-						.array(z.enum(["general", "education", "certification"]))
-						.optional()
-						.default(["general", "education", "certification"])
-						.describe("KoNECT notice categories to include."),
-
-					includeIrrelevant: z
-						.boolean()
-						.optional()
-						.default(false)
-						.describe(
-							"Whether CRA-irrelevant items should also be returned. Normally false.",
-						),
-				}),
-			}),
-
 			getTodayDate: tool({
 				description:
 					"Get today's calendar date in Korea Standard Time (Asia/Seoul) as YYYY-MM-DD.",
@@ -543,23 +227,14 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 			getRegulatoryAnalysis: tool({
 				description: `
 				Retrieve a previously stored analysis for one known regulatory item
-				from agent memory.
+				from regulatory memory.
 
-				Use this tool when the user explicitly asks about:
-				- a previous or stored analysis
-				- what was previously determined
-				- remembered CRA impact or relevance
-				- what the agent already knows about a specific item
-				- an existing analysis for a known ICH, MFDS, or KoNECT item
+				Use this when the user asks about:
+				- a previous analysis
+				- stored CRA impact or relevance
+				- what was previously determined for a known item
 
-				Do NOT use this tool as the sole source for:
-				- latest status
-				- current implementation status
-				- today's updates
-				- current course availability
-				- live regulatory verification
-
-				Memory is stored historical knowledge and is not a live source refresh.
+				This is stored memory, not live regulatory verification.
 				`.trim(),
 
 				inputSchema: regulatoryMemoryAnalysisInputSchema,
@@ -588,19 +263,16 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 
 			searchRegulatoryMemory: tool({
 				description: `
-			  Search previously stored regulatory memory and analysis.
-			  
-			  Use this tool when the user asks:
-			  - what the agent already knows about a topic
-			  - to find previous regulatory analyses
-			  - to search stored CRA-impact assessments
-			  - to find remembered information across MFDS, ICH, or KoNECT
-			  - for previously analyzed topics such as monitoring, consent, GCP,
-				essential documents, safety, or CRA education
-			  
-			  This tool searches stored memory only.
-			  It does not verify the current official source.
-			  Do not use it as the sole source for "latest", "current", or "today" questions.
+			  	Search previously stored regulatory memory by topic or keyword.
+
+				Use this for:
+				- previous regulatory analyses
+				- stored CRA impact assessments
+				- remembered information across MFDS, ICH, and KoNECT
+				- topics such as monitoring, consent, GCP, safety, data integrity,
+				essential documents, or CRA education
+
+				This tool does not perform live source verification.
 				`.trim(),
 
 				inputSchema: regulatoryMemorySearchInputSchema,
@@ -619,19 +291,13 @@ export class CraAssistantAgent extends Think<Env, CraAssistantAgentState> {
 
 			listRecentRegulatoryChanges: tool({
 				description: `
-			  List recent new or changed items recorded in regulatory memory.
-			  
-			  Use this tool when the user asks:
-			  - what changed recently in stored regulatory memory
-			  - which items the monitoring workflow detected as new or changed
-			  - recent remembered MFDS, ICH, or KoNECT changes
-			  - what the agent detected during previous monitoring runs
-			  
-			  This tool reports changes already recorded in memory.
-			  It is NOT a live regulatory source check.
-			  
-			  For "latest right now", "today", or current verification,
-			  use the appropriate live regulatory source agent instead.
+			  	List new or changed regulatory items that were previously recorded
+				by the monitoring workflow.
+
+				Use this when the user asks what earlier workflow runs detected
+				as new or changed.
+
+				This reflects stored observations only and is not a live source check.
 				`.trim(),
 
 				inputSchema: recentRegulatoryChangesInputSchema,
