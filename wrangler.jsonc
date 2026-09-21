@@ -91,6 +91,12 @@
 			"remote": true,
 		},
 	],
+	"vars": {
+		"RENDER_SERVICE_URL": "https://cra-rbm-assistant.onrender.com",
+	},
+	"secrets": {
+		"required": ["KONECT_FALLBACK_TOKEN"],
+	},
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

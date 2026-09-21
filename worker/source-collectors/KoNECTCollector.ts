@@ -15,19 +15,15 @@ import {
 	KONECT_BASE_URL,
 	KONECT_HEADERS,
 } from "../constants.ts";
+import { fetchKoNECT } from "../helpers/fetchKoNECT.ts";
 
 export interface KoNECTCollectorInput {
 	since?: string;
 	until?: string;
-
 	includeCourses?: boolean;
-
 	onlyOpenCourses?: boolean;
-
 	includeNoticeTypes?: KoNECTNoticeType[];
-
 	noticePageIndex?: number;
-
 	coursePageIndex?: number;
 }
 
@@ -51,15 +47,11 @@ export class KoNECTCollector {
 			includeNoticeTypes.includes(target.type),
 		);
 
+		const testResponse = await fetch("https://lms.konect.or.kr/web/index.do", {
+			headers: KONECT_HEADERS,
+			redirect: "follow",
+		});
 
-		const testResponse = await fetch(
-			"https://lms.konect.or.kr/web/index.do",
-			{
-				headers: KONECT_HEADERS,
-				redirect: "follow",
-			},
-		);
-		
 		console.log("[KoNECTCollector] index probe", {
 			status: testResponse.status,
 			statusText: testResponse.statusText,
@@ -83,30 +75,29 @@ export class KoNECTCollector {
 					url,
 				});
 
-				const response = await fetch(url, {
-					headers: KONECT_HEADERS,
-					redirect: "follow",
-				});
+				const response = await fetchKoNECT(url);
 
-				if (!response.ok) {
-					const body = await response.text();
+				// const response = await fetch(url, {
+				// 	headers: KONECT_HEADERS,
+				// 	redirect: "follow",
+				// });
 
-	console.error("[KoNECTCollector] bad response", {
-		url,
-		status: response.status,
-		statusText: response.statusText,
-		bodyPreview: body.slice(0, 1000),
-		finalUrl: response.url,
-						redirected: response.redirected,
-						contentType:
-							response.headers.get(
-								"content-type",
-							),
-	});
-					throw new Error(
-						`KoNECT notice request failed: ${response.status} ${response.statusText}`,
-					);
-				}
+				// if (!response.ok) {
+				// 	const body = await response.text();
+
+				// 	console.error("[KoNECTCollector] bad response", {
+				// 		url,
+				// 		status: response.status,
+				// 		statusText: response.statusText,
+				// 		bodyPreview: body.slice(0, 1000),
+				// 		finalUrl: response.url,
+				// 		redirected: response.redirected,
+				// 		contentType: response.headers.get("content-type"),
+				// 	});
+				// 	throw new Error(
+				// 		`KoNECT notice request failed: ${response.status} ${response.statusText}`,
+				// 	);
+				// }
 
 				const html = await response.text();
 
@@ -152,32 +143,30 @@ export class KoNECTCollector {
 			try {
 				console.log("[KoNECTCollector] fetching CRA courses", courseUrl);
 
-				const response = await fetch(courseUrl, {
-					headers: KONECT_HEADERS,
-					redirect: "follow",
-				});
+				const response = await fetchKoNECT(courseUrl);
 
-				if (!response.ok) {
+				// const response = await fetch(courseUrl, {
+				// 	headers: KONECT_HEADERS,
+				// 	redirect: "follow",
+				// });
 
-					const body = await response.text();
+				// if (!response.ok) {
+				// 	const body = await response.text();
 
-	console.error("[KoNECTCollector] bad response", {
-		url: courseUrl,
-		status: response.status,
-		statusText: response.statusText,
-		bodyPreview: body.slice(0, 1000),
-		finalUrl: response.url,
-						redirected: response.redirected,
-						contentType:
-							response.headers.get(
-								"content-type",
-							),
-	});
-					
-					throw new Error(
-						`KoNECT CRA course request failed: ${response.status} ${response.statusText}`,
-					);
-				}
+				// 	console.error("[KoNECTCollector] bad response", {
+				// 		url: courseUrl,
+				// 		status: response.status,
+				// 		statusText: response.statusText,
+				// 		bodyPreview: body.slice(0, 1000),
+				// 		finalUrl: response.url,
+				// 		redirected: response.redirected,
+				// 		contentType: response.headers.get("content-type"),
+				// 	});
+
+				// 	throw new Error(
+				// 		`KoNECT CRA course request failed: ${response.status} ${response.statusText}`,
+				// 	);
+				// }
 
 				const html = await response.text();
 
