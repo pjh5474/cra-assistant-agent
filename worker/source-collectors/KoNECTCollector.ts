@@ -51,6 +51,22 @@ export class KoNECTCollector {
 			includeNoticeTypes.includes(target.type),
 		);
 
+
+		const testResponse = await fetch(
+			"https://lms.konect.or.kr/web/index.do",
+			{
+				headers: KONECT_HEADERS,
+				redirect: "follow",
+			},
+		);
+		
+		console.log("[KoNECTCollector] index probe", {
+			status: testResponse.status,
+			statusText: testResponse.statusText,
+			finalUrl: testResponse.url,
+			redirected: testResponse.redirected,
+		});
+
 		/*
 		 * Notice 3종은 서로 독립적이므로
 		 * 하나 실패해도 다른 source는 계속 수집한다.
@@ -73,6 +89,20 @@ export class KoNECTCollector {
 				});
 
 				if (!response.ok) {
+					const body = await response.text();
+
+	console.error("[KoNECTCollector] bad response", {
+		url,
+		status: response.status,
+		statusText: response.statusText,
+		bodyPreview: body.slice(0, 1000),
+		finalUrl: response.url,
+						redirected: response.redirected,
+						contentType:
+							response.headers.get(
+								"content-type",
+							),
+	});
 					throw new Error(
 						`KoNECT notice request failed: ${response.status} ${response.statusText}`,
 					);
@@ -128,6 +158,22 @@ export class KoNECTCollector {
 				});
 
 				if (!response.ok) {
+
+					const body = await response.text();
+
+	console.error("[KoNECTCollector] bad response", {
+		url: courseUrl,
+		status: response.status,
+		statusText: response.statusText,
+		bodyPreview: body.slice(0, 1000),
+		finalUrl: response.url,
+						redirected: response.redirected,
+						contentType:
+							response.headers.get(
+								"content-type",
+							),
+	});
+					
 					throw new Error(
 						`KoNECT CRA course request failed: ${response.status} ${response.statusText}`,
 					);
