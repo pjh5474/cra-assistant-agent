@@ -16,29 +16,25 @@ export function mapWorkflowActivities(
 			key: "source-processing",
 			label: "Regulatory Source Processing",
 			step: workflow.steps.sourceProcessing,
-			order: 2_000_000,
 		},
 		{
 			key: "synthesis",
 			label: "Regulatory Synthesis",
 			step: workflow.steps.synthesis,
-			order: 2_000_001,
 		},
 		{
 			key: "reporting",
 			label: "Regulatory Reporting",
 			step: workflow.steps.reporting,
-			order: 2_000_002,
 		},
 		{
 			key: "email",
 			label: "Workflow Email Delivery",
 			step: workflow.steps.email,
-			order: 2_000_003,
 		},
 	] as const;
 
-	for (const { key, label, step, order } of steps) {
+	for (const { key, label, step } of steps) {
 		if (step.status === "pending") {
 			continue;
 		}
@@ -58,7 +54,7 @@ export function mapWorkflowActivities(
 			inputPreview: step.message,
 			tools: [],
 			error: step.error,
-			order,
+			order: 0,
 		});
 	}
 

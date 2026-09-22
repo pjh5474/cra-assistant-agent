@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 
 export async function fetchKoNECT(url: string): Promise<Response> {
 	const startedAt = Date.now();
+
 	try {
 		const directResponse = await fetch(url, {
 			headers: KONECT_HEADERS,
@@ -42,6 +43,11 @@ export async function fetchKoNECT(url: string): Promise<Response> {
 	/**
 	 * 2. Render fallback
 	 */
+
+	const controller = new AbortController();
+
+	const timeout = setTimeout(() => controller.abort(), 90_000);
+
 	const fallbackStartedAt = Date.now();
 
 	const fallbackUrl = new URL("/api/konect/fetch", env.RENDER_SERVICE_URL);
@@ -58,6 +64,7 @@ export async function fetchKoNECT(url: string): Promise<Response> {
 			headers: {
 				"X-Internal-Token": env.KONECT_FALLBACK_TOKEN,
 			},
+			signal: controller.signal,
 		});
 
 		if (!fallbackResponse.ok) {
@@ -89,13 +96,22 @@ export async function fetchKoNECT(url: string): Promise<Response> {
 
 		return fallbackResponse;
 	} catch (error) {
+		const isAbortError = error instanceof Error && error.name === "AbortError";
+
 		console.error("[KoNECTCollector] fallback fetch threw", {
 			targetUrl: url,
+			errorType: isAbortError ? "timeout" : "fetch-error",
 			error: error instanceof Error ? error.message : String(error),
 			durationMs: Date.now() - fallbackStartedAt,
 			totalDurationMs: Date.now() - startedAt,
 		});
 
+		if (isAbortError) {
+			throw new Error("KoNECT fallback request timed out after 90 seconds");
+		}
+
 		throw error;
+	} finally {
+		clearTimeout(timeout);
 	}
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgent, useAgentToolEvents } from "agents/react";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
 import {
@@ -42,6 +42,7 @@ import { SchedulePanel } from "./components/schedule/SchedulePanel.tsx";
 import { activityFromWorkflow } from "./lib/activityFromWorkflow.ts";
 import { formatToolName } from "./lib/formatToolName.ts";
 import { mapWorkflowActivities } from "./lib/mapWorkflowActivities.ts";
+import type { AgentActivity } from "./types/agent-activity.ts";
 
 function stringifyActivityPreview(value: unknown): string | undefined {
 	if (value === undefined || value === null) {
@@ -139,12 +140,39 @@ export default function App() {
 
 	const workflow = agent.state?.regulatoryWorkflow;
 
-	const { runningActivities, recentActivities } = useMemo(() => {
-		const subAgentActivities = mapAgentToolActivities(agentTools);
-		const mainToolActivities: ReturnType<typeof mapAgentToolActivities> = [];
-		const workflowActivities = mapWorkflowActivities(workflow);
+	const activityOrderRef = useRef(new Map<string, number>());
 
-		let order = 1_000_000;
+	const nextOrderRef = useRef(0);
+
+	function getActivityOrder(id: string) {
+		const existing = activityOrderRef.current.get(id);
+
+		if (existing !== undefined) {
+			return existing;
+		}
+
+		const nextOrder = nextOrderRef.current++;
+
+		activityOrderRef.current.set(id, nextOrder);
+
+		return nextOrder;
+	}
+
+	const { runningActivities, recentActivities } = useMemo(() => {
+		// const mainToolActivities: ReturnType<typeof mapAgentToolActivities> = [];
+
+		// let order = 0;
+
+		// const subAgentActivities = mapAgentToolActivities(agentTools).map(
+		// 	(activity) => ({
+		// 		...activity,
+		// 		order: order++,
+		// 	}),
+		// );
+
+		const subAgentActivities = mapAgentToolActivities(agentTools);
+
+		const mainToolActivities: AgentActivity[] = [];
 
 		for (const message of messages) {
 			for (const part of message.parts) {
@@ -181,16 +209,21 @@ export default function App() {
 					inputPreview: stringifyActivityPreview(input),
 					tools: [],
 					error: errorText,
-					order: order++,
+					order: 0,
 				});
 			}
 		}
+
+		const workflowActivities = mapWorkflowActivities(workflow);
 
 		const activities = [
 			...subAgentActivities,
 			...mainToolActivities,
 			...workflowActivities,
-		];
+		].map((activity) => ({
+			...activity,
+			order: getActivityOrder(activity.id),
+		}));
 
 		const deduped = Array.from(
 			new Map(activities.map((activity) => [activity.id, activity])).values(),

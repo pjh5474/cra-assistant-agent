@@ -257,7 +257,7 @@ export function RegulatoryBriefingPanel({
 							<CollapsibleTrigger className="group inline-flex h-auto items-center gap-2 rounded-md px-0 py-0 text-sm font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
 								Additional References
 								<Badge variant="secondary">{briefing.references.length}</Badge>
-								<ChevronDown className="h-4 w-4 transition-transform group-data-[state=open]:rotate-180" />
+								<ChevronDown className="h-4 w-4 transition-transform duration-200 group-data-panel-open:rotate-180" />
 							</CollapsibleTrigger>
 
 							<span className="text-xs text-muted-foreground">

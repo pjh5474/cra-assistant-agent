@@ -35,11 +35,17 @@ export function AgentMemoryList({ items }: AgentMemoryListProps) {
 
 	return (
 		<div className="space-y-3">
-			{items.map((item) => (
-				<MemoryItemCard
+			{items.map((item, index) => (
+				<div
 					key={`${item.source}:${item.sourceId}:${item.contentHash}`}
-					item={item}
-				/>
+					className="animate-in fade-in slide-in-from-bottom-1 duration-300"
+					style={{
+						animationDelay: `${Math.min(index * 40, 200)}ms`,
+						animationFillMode: "both",
+					}}
+				>
+					<MemoryItemCard item={item} />
+				</div>
 			))}
 		</div>
 	);
@@ -48,10 +54,10 @@ export function AgentMemoryList({ items }: AgentMemoryListProps) {
 function MemoryItemCard({ item }: { item: AgentMemoryItem }) {
 	return (
 		<Collapsible>
-			<div className="rounded-lg border">
+			<div className="rounded-lg border bg-background transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-sm">
 				<div className="flex flex-wrap items-start gap-3 p-4">
 					<CollapsibleTrigger className="group flex min-w-0 flex-1 items-start gap-3 text-left">
-						<ChevronDown className="mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+						<ChevronDown className="mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-panel-open:rotate-180" />
 
 						<div className="min-w-0 flex-1 space-y-2">
 							<div className="flex flex-wrap gap-2">
@@ -107,7 +113,7 @@ function MemoryItemCard({ item }: { item: AgentMemoryItem }) {
 					)}
 				</div>
 
-				<CollapsibleContent>
+				<CollapsibleContent className="overflow-hidden data-open:animate-collapsible-down data-closed:animate-collapsible-up">
 					<div className="border-t px-4 py-4">
 						{item.analysis ? (
 							<AnalysisDetails item={item} />
